@@ -19,6 +19,7 @@ model Client {
   conversations Conversation[]
   leads        Lead[]
   feedback     Feedback[]
+  fileAssets   FileAsset[]
 
   @@map("clients")
 }
@@ -108,4 +109,20 @@ model AppSetting {
   updatedAt           DateTime @updatedAt @map("updated_at")
 
   @@map("app_settings")
+}
+
+model FileAsset {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId   String   @map("client_id") @db.Uuid
+  filename   String
+  mimeType   String   @map("mime_type")
+  sizeBytes  Int      @map("size_bytes")
+  blobUrl    String   @map("blob_url")
+  blobPath   String   @map("blob_path")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@map("file_assets")
 }

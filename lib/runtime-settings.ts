@@ -6,6 +6,7 @@ type RuntimeSettings = {
   openaiChatModel: string;
   openaiEmbeddingModel: string;
   appBaseUrl: string | null;
+  blobConfigured: boolean;
 };
 
 export async function getRuntimeSettings(): Promise<RuntimeSettings> {
@@ -28,6 +29,7 @@ export async function getRuntimeSettings(): Promise<RuntimeSettings> {
       setting?.openaiEmbeddingModel ??
       DEFAULT_EMBEDDING_MODEL,
     appBaseUrl: process.env.APP_BASE_URL ?? setting?.appBaseUrl ?? null,
+    blobConfigured: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
   };
 }
 

@@ -16,6 +16,7 @@ type AdminSettingsResponse = {
     openaiChatModel: string;
     openaiEmbeddingModel: string;
     appBaseUrl: string | null;
+    blobConfigured: boolean;
   };
   envOverrides: {
     openaiApiKey: boolean;
@@ -39,6 +40,7 @@ export default function AdminPage() {
   const [openaiEmbeddingModel, setOpenaiEmbeddingModel] = useState("text-embedding-3-small");
   const [appBaseUrl, setAppBaseUrl] = useState("");
   const [hasOpenaiApiKey, setHasOpenaiApiKey] = useState(false);
+  const [blobConfigured, setBlobConfigured] = useState(false);
   const [envOverrides, setEnvOverrides] = useState<AdminSettingsResponse["envOverrides"] | null>(null);
 
   async function loadClients() {
@@ -97,6 +99,7 @@ export default function AdminPage() {
     setOpenaiEmbeddingModel(data.settings.openaiEmbeddingModel);
     setAppBaseUrl(data.settings.appBaseUrl ?? "");
     setHasOpenaiApiKey(data.settings.hasOpenaiApiKey);
+    setBlobConfigured(data.settings.blobConfigured);
     setEnvOverrides(data.envOverrides);
     setStatus("Impostazioni caricate");
   }
@@ -126,6 +129,7 @@ export default function AdminPage() {
 
     setOpenaiApiKey("");
     setHasOpenaiApiKey(data.settings.hasOpenaiApiKey);
+    setBlobConfigured(data.settings.blobConfigured);
     setEnvOverrides(data.envOverrides);
     setStatus("Impostazioni salvate");
   }
@@ -234,6 +238,7 @@ export default function AdminPage() {
           <div>ENV override chat model: {envOverrides?.openaiChatModel ? "si" : "no"}</div>
           <div>ENV override embedding model: {envOverrides?.openaiEmbeddingModel ? "si" : "no"}</div>
           <div>ENV override APP_BASE_URL: {envOverrides?.appBaseUrl ? "si" : "no"}</div>
+          <div>BLOB_READ_WRITE_TOKEN configurato (ENV): {blobConfigured ? "si" : "no"}</div>
         </div>
       </section>
 

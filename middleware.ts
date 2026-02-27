@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isValidUuid } from "@/lib/tenant";
 
-const TENANT_SCOPED_PREFIXES = ["/api/chat", "/api/lead", "/api/feedback", "/api/ingest"];
+const TENANT_SCOPED_PREFIXES = ["/api/chat", "/api/lead", "/api/feedback", "/api/ingest", "/api/files"];
 
 async function tenantExists(request: NextRequest, clientId: string) {
   const url = new URL("/api/internal/client-exists", request.url);

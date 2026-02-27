@@ -23,6 +23,7 @@ Stack:
 - `conversations`
 - `leads`
 - `feedback`
+- `file_assets`
 
 3. Tenant context obbligatorio in DB:
 - tutte le query tenant-scoped passano da `withTenant(clientId, fn)`
@@ -45,6 +46,7 @@ Prisma usa connection pooling. Per evitare leakage di tenant context:
 Tabelle principali:
 - `clients` (admin/global)
 - `app_settings` (admin/global)
+- `file_assets` (tenant-scoped, metadata file su Vercel Blob)
 - `documents` (tenant-scoped)
 - `chunks` (tenant-scoped, con `embedding vector(1536)`)
 - `conversations` (tenant-scoped)
@@ -97,6 +99,12 @@ Tabelle principali:
 - Dati da dove arrivano: da `POST /api/feedback`.
 - Da creare?: No manualmente; si popola da frontend.
 
+`file_assets`
+- Serve per: catalogo file tenant caricati su storage.
+- Fa: salva metadata (`filename`, `mime_type`, `size_bytes`, `blob_url`, `blob_path`).
+- Dati da dove arrivano: da `POST /api/files`.
+- Da creare?: No manualmente; si popola con upload file.
+
 ### API endpoint
 
 `GET /api/health`
@@ -114,8 +122,20 @@ Tabelle principali:
 `POST /api/ingest` (tenant-scoped)
 - Serve per: indicizzare documenti `.md/.txt`.
 - Fa: crea `document`, chunka testo, genera embedding, inserisce `chunks`.
-- Dati da dove arrivano: file multipart `file` + `x-client-id`.
+- Dati da dove arrivano: multipart `file` oppure `fileAssetId` (file già su Blob) + `x-client-id`.
 - Da creare?: Sì, va invocato almeno una volta per avere contenuto RAG.
+
+`GET/POST /api/files` (tenant-scoped)
+- Serve per: upload e lista file tenant su Vercel Blob.
+- Fa: carica file in Blob `private`, salva metadata in `file_assets`, lista file del tenant.
+- Dati da dove arrivano: multipart `file` + `x-client-id`.
+- Da creare?: No endpoint; va solo usato dal client/app.
+
+`GET/DELETE /api/files/:id` (tenant-scoped)
+- Serve per: download o rimozione file tenant.
+- Fa: scarica contenuto file da Blob privato o elimina file+metadata.
+- Dati da dove arrivano: id file in `file_assets` + `x-client-id`.
+- Da creare?: No.
 
 `POST /api/lead` (tenant-scoped)
 - Serve per: acquisire lead.
@@ -220,10 +240,24 @@ Tabelle principali:
 
 `app/api/ingest/route.ts`
 - Serve per: ingestion knowledge base.
-- Fa: accetta `.md/.txt`, crea `documents`, chunka, embeddizza, inserisce `chunks`.
-- Input: `x-client-id`, multipart `file`.
+- Fa: accetta `.md/.txt` diretto o `fileAssetId`, crea `documents`, chunka, embeddizza, inserisce `chunks`.
+- Input: `x-client-id`, multipart `file` oppure `fileAssetId`.
 - Output: `{ documentId, chunkCount }`.
-- Da creare/configurare?: Sì, va usato per popolare RAG.
+- Da creare/configurare?: Sì, va usato per popolare RAG. PDF/immagini richiedono parser/OCR prima di ingest.
+
+`app/api/files/route.ts`
+- Serve per: storage file tenant.
+- Fa: upload/lista file tenant su Vercel Blob privato.
+- Input: `x-client-id`, multipart `file` (POST).
+- Output: metadata file salvato su DB + Blob.
+- Da creare/configurare?: Serve `BLOB_READ_WRITE_TOKEN` in ENV.
+
+`app/api/files/[id]/route.ts`
+- Serve per: lifecycle file per tenant.
+- Fa: download file Blob privato o delete file+metadata.
+- Input: `x-client-id` + `id` file.
+- Output: stream file o conferma cancellazione.
+- Da creare/configurare?: Serve `BLOB_READ_WRITE_TOKEN` in ENV.
 
 `app/api/lead/route.ts`
 - Serve per: raccolta lead.
@@ -312,6 +346,12 @@ Tabelle principali:
 - Dati da dove arrivano: provisioning Postgres.
 - Da creare?: Sì, obbligatoria.
 
+`BLOB_READ_WRITE_TOKEN`
+- Serve per: accesso server-side a Vercel Blob (upload/download/delete).
+- Fa: abilita endpoint `/api/files` e ingest via `fileAssetId`.
+- Dati da dove arrivano: Vercel Storage -> Blob.
+- Da creare?: Sì, obbligatoria se usi file storage.
+
 `DATABASE_URL_ADMIN`
 - Serve per: connessione elevata opzionale (admin/migrazioni avanzate).
 - Fa: supporta operazioni extra fuori perimetro tenant.
@@ -354,6 +394,7 @@ Prerequisiti:
 - Node.js 20+
 - PostgreSQL 15+
 - estensione `pgvector`
+- Vercel Blob (storage file)
 
 1. Installa dipendenze:
 
@@ -403,6 +444,22 @@ npm run prisma:generate
 npm run dev
 ```
 
+## Setup Neon + Vercel Blob (consigliato)
+
+1. Crea database su Neon (PostgreSQL).
+2. Imposta `DATABASE_URL` con credenziali utente applicativo (`app_user`).
+3. Applica migrazioni:
+```bash
+npm run prisma:deploy
+```
+4. In Vercel, aggiungi Blob al progetto e copia `BLOB_READ_WRITE_TOKEN`.
+5. Imposta env su Vercel:
+- `DATABASE_URL`
+- `BLOB_READ_WRITE_TOKEN`
+- `OPENAI_API_KEY` (oppure config da `/admin`)
+- `ADMIN_SECRET`
+6. Redeploy.
+
 ## Setup RLS (dettaglio)
 
 La migrazione `prisma/migrations/0002_rls/migration.sql`:
@@ -428,6 +485,8 @@ client_id = current_setting('app.tenant_id', true)::uuid
 - `POST /api/lead`
 - `POST /api/feedback`
 - `POST /api/ingest` (multipart, campo `file`, supporta `.md`/`.txt`)
+- `GET/POST /api/files`
+- `GET/DELETE /api/files/:id`
 
 ### Admin globali (header `x-admin-secret`)
 - `GET/POST/PUT/DELETE /api/admin/clients`
@@ -455,6 +514,7 @@ Pagina demo:
 
 Env vars richieste:
 - `DATABASE_URL` (utente `app_user`)
+- `BLOB_READ_WRITE_TOKEN` (Vercel Blob private access)
 - `DATABASE_URL_ADMIN` (opzionale, per operazioni elevate)
 - `OPENAI_API_KEY` (opzionale se configurata da `/admin`, consigliata via ENV)
 - `OPENAI_CHAT_MODEL` (opzionale, altrimenti da `/admin` o default)

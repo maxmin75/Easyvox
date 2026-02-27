@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
       openaiChatModel: runtime.openaiChatModel,
       openaiEmbeddingModel: runtime.openaiEmbeddingModel,
       appBaseUrl: runtime.appBaseUrl,
+      blobConfigured: runtime.blobConfigured,
     },
     envOverrides: envOverridesRuntimeSettings(),
   });
@@ -69,6 +70,7 @@ export async function PUT(request: NextRequest) {
       openaiChatModel: runtime.openaiChatModel,
       openaiEmbeddingModel: runtime.openaiEmbeddingModel,
       appBaseUrl: runtime.appBaseUrl,
+      blobConfigured: runtime.blobConfigured,
     },
     envOverrides: envOverridesRuntimeSettings(),
   });
