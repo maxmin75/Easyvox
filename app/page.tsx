@@ -1,66 +1,64 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <main className="container" style={{ padding: "42px 0 64px" }}>
+      <section
+        className="card"
+        style={{
+          padding: 28,
+          display: "grid",
+          gap: 20,
+          background:
+            "linear-gradient(130deg, color-mix(in srgb, var(--surface), #fff 65%) 20%, #fff2da 100%)",
+        }}
+      >
+        <p className="mono" style={{ margin: 0, color: "var(--muted)", fontSize: 12 }}>
+          Next.js + Prisma + PostgreSQL + pgvector + RLS
+        </p>
+        <h1 style={{ margin: 0, fontSize: "clamp(2rem, 4vw, 3.5rem)", lineHeight: 1 }}>AI Chat Hub</h1>
+        <p style={{ margin: 0, maxWidth: 700, color: "var(--muted)", fontSize: 18 }}>
+          Piattaforma multi-tenant con chat AI, retrieval RAG isolato per tenant, widget embeddabile e
+          dashboard admin.
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+          <Link
+            href="/demo"
+            style={{
+              borderRadius: 999,
+              background: "var(--ink)",
+              color: "white",
+              textDecoration: "none",
+              padding: "10px 16px",
+            }}
           >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            Apri demo widget
+          </Link>
+          <Link
+            href="/admin"
+            style={{
+              borderRadius: 999,
+              border: "1px solid var(--line)",
+              textDecoration: "none",
+              padding: "10px 16px",
+            }}
           >
-            Documentation
-          </a>
+            Apri dashboard admin
+          </Link>
         </div>
-      </main>
-    </div>
+      </section>
+
+      <section style={{ marginTop: 22 }}>
+        <div className="card" style={{ padding: 22 }}>
+          <h2 style={{ marginTop: 0 }}>Sicurezza applicata</h2>
+          <ul style={{ margin: 0, paddingLeft: 18, color: "var(--muted)", lineHeight: 1.6 }}>
+            <li>Middleware blocca API tenant-scoped senza `clientId` valido.</li>
+            <li>RLS Postgres applicata su tutte le tabelle tenant-scoped.</li>
+            <li>`withTenant` imposta `app.tenant_id` in transazione e forza query via `tx`.</li>
+            <li>Retrieval RAG filtrato sia da RLS che da filtro SQL esplicito `client_id = ...`.</li>
+          </ul>
+        </div>
+      </section>
+    </main>
   );
 }

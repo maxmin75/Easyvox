@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Client {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String
+  slug         String     @unique
+  systemPrompt String?    @map("system_prompt")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  documents    Document[]
+  chunks       Chunk[]
+  conversations Conversation[]
+  leads        Lead[]
+  feedback     Feedback[]
+
+  @@map("clients")
+}
+
+model Document {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId  String   @map("client_id") @db.Uuid
+  title     String
+  source    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  client Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  chunks Chunk[]
+
+  @@index([clientId])
+  @@map("documents")
+}
+
+model Chunk {
+  id         String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId   String                     @map("client_id") @db.Uuid
+  documentId String                     @map("document_id") @db.Uuid
+  content    String
+  metadata   Json?
+  embedding  Unsupported("vector(1536)")
+  createdAt  DateTime                   @default(now()) @map("created_at")
+
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([documentId])
+  @@map("chunks")
+}
+
+model Conversation {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId         String   @map("client_id") @db.Uuid
+  sessionId        String   @map("session_id")
+  userMessage      String   @map("user_message")
+  assistantMessage String   @map("assistant_message")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([clientId, sessionId])
+  @@map("conversations")
+}
+
+model Lead {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId  String   @map("client_id") @db.Uuid
+  name      String
+  email     String
+  message   String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@map("leads")
+}
+
+model Feedback {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId  String   @map("client_id") @db.Uuid
+  sessionId String?  @map("session_id")
+  rating    Int?
+  comment   String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@map("feedback")
+}
