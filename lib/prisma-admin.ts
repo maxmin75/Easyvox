@@ -6,13 +6,18 @@ const globalForPrismaAdmin = globalThis as unknown as {
 
 function createPrismaAdminClient() {
   const adminUrl = process.env.DATABASE_URL_ADMIN || process.env.DATABASE_URL;
+  if (adminUrl) {
+    return new PrismaClient({
+      datasources: {
+        db: {
+          url: adminUrl,
+        },
+      },
+      log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
+    });
+  }
 
   return new PrismaClient({
-    datasources: {
-      db: {
-        url: adminUrl,
-      },
-    },
     log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
   });
 }
