@@ -96,3 +96,16 @@ model Feedback {
   @@index([clientId])
   @@map("feedback")
 }
+
+model AppSetting {
+  id                  Int      @id @default(1)
+  singleton           String   @unique @default("default")
+  openaiApiKey        String?  @map("openai_api_key")
+  openaiChatModel     String?  @map("openai_chat_model")
+  openaiEmbeddingModel String? @map("openai_embedding_model")
+  appBaseUrl          String?  @map("app_base_url")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("app_settings")
+}

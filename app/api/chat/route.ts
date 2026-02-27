@@ -3,7 +3,8 @@ import { z } from "zod";
 import { withTenant } from "@/lib/db/tenant";
 import { jsonError } from "@/lib/api/errors";
 import { prisma } from "@/lib/prisma";
-import { chatModel, getOpenAIClient } from "@/lib/openai";
+import { createOpenAIClient } from "@/lib/openai";
+import { getRuntimeSettings } from "@/lib/runtime-settings";
 import { createEmbedding } from "@/lib/rag/embeddings";
 import { retrieveTopChunks } from "@/lib/rag/retrieval";
 
@@ -15,12 +16,12 @@ const schema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  try {
-    getOpenAIClient();
-  } catch {
-    return jsonError("OPENAI_API_KEY non configurata", 500);
+  const runtimeSettings = await getRuntimeSettings();
+  if (!runtimeSettings.openaiApiKey) {
+    return jsonError("OPENAI_API_KEY non configurata (env o impostazioni admin)", 500);
   }
-  const openai = getOpenAIClient();
+
+  const openai = createOpenAIClient(runtimeSettings.openaiApiKey);
   const clientId = request.headers.get("x-client-id");
   if (!clientId) return jsonError("clientId mancante", 400);
 
@@ -34,14 +35,18 @@ export async function POST(request: NextRequest) {
 
   if (!client) return jsonError("Tenant non trovato", 404);
 
-  const embedding = await createEmbedding(parsed.data.message);
+  const embedding = await createEmbedding(
+    parsed.data.message,
+    openai,
+    runtimeSettings.openaiEmbeddingModel,
+  );
 
   const result = await withTenant(clientId, async (tx) => {
     const chunks = await retrieveTopChunks(tx, clientId, embedding, 5);
     const context = chunks.map((chunk, index) => `[${index + 1}] ${chunk.content}`).join("\n\n");
 
     const completion = await openai.responses.create({
-      model: chatModel,
+      model: runtimeSettings.openaiChatModel,
       input: [
         {
           role: "system",

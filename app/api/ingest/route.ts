@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withTenant } from "@/lib/db/tenant";
 import { jsonError } from "@/lib/api/errors";
-import { getOpenAIClient } from "@/lib/openai";
+import { createOpenAIClient } from "@/lib/openai";
+import { getRuntimeSettings } from "@/lib/runtime-settings";
 import { chunkText } from "@/lib/rag/chunking";
 import { createEmbedding, embeddingToVectorLiteral } from "@/lib/rag/embeddings";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
-  try {
-    getOpenAIClient();
-  } catch {
-    return jsonError("OPENAI_API_KEY non configurata", 500);
+  const runtimeSettings = await getRuntimeSettings();
+  if (!runtimeSettings.openaiApiKey) {
+    return jsonError("OPENAI_API_KEY non configurata (env o impostazioni admin)", 500);
   }
 
+  const openai = createOpenAIClient(runtimeSettings.openaiApiKey);
   const clientId = request.headers.get("x-client-id");
   if (!clientId) return jsonError("clientId mancante", 400);
 
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
     });
 
     for (const chunk of chunks) {
-      const embedding = await createEmbedding(chunk);
+      const embedding = await createEmbedding(chunk, openai, runtimeSettings.openaiEmbeddingModel);
       const vector = embeddingToVectorLiteral(embedding);
 
       await tx.$executeRaw`
