@@ -65,7 +65,7 @@ Tabelle principali:
 
 `app_settings`
 - Serve per: configurazione runtime globale API/modelli.
-- Fa: salva OpenAI API key (opzionale), modello chat, modello embedding, `APP_BASE_URL`.
+- Fa: salva provider AI (`openai`/`ollama`), OpenAI key (opzionale), modelli OpenAI/Ollama, `APP_BASE_URL`.
 - Dati da dove arrivano: dashboard admin (`/admin`) tramite `GET/PUT /api/admin/settings`.
 - Da creare?: No manualmente; viene creato/aggiornato automaticamente.
 
@@ -116,13 +116,13 @@ Tabelle principali:
 `POST /api/chat` (tenant-scoped)
 - Serve per: chat AI con RAG per tenant.
 - Fa: calcola embedding della query, recupera top chunks tenant, genera risposta e salva conversazione.
-- Dati da dove arrivano: body (`sessionId`, `message`) + `x-client-id` + `chunks` già ingestiti.
+- Dati da dove arrivano: body (`sessionId`, `message`) + `x-client-id` + `chunks` già ingestiti + provider AI configurato.
 - Da creare?: Sì, serve prima creare tenant e caricare documenti con ingest.
 
 `POST /api/ingest` (tenant-scoped)
 - Serve per: indicizzare documenti `.md/.txt`.
 - Fa: crea `document`, chunka testo, genera embedding, inserisce `chunks`.
-- Dati da dove arrivano: multipart `file` oppure `fileAssetId` (file già su Blob) + `x-client-id`.
+- Dati da dove arrivano: multipart `file` oppure `fileAssetId` (file già su Blob) + `x-client-id` + provider embedding configurato.
 - Da creare?: Sì, va invocato almeno una volta per avere contenuto RAG.
 
 `GET/POST /api/files` (tenant-scoped)
@@ -163,7 +163,7 @@ Tabelle principali:
 
 `GET/PUT /api/admin/settings` (admin)
 - Serve per: gestione configurazioni API globali.
-- Fa: legge/salva OpenAI key, modelli AI e `APP_BASE_URL`.
+- Fa: legge/salva provider AI, OpenAI key, config Ollama, modelli AI e `APP_BASE_URL`.
 - Dati da dove arrivano: header `x-admin-secret` + payload impostazioni.
 - Da creare?: No endpoint; va solo configurato da `/admin`.
 
@@ -218,18 +218,25 @@ Tabelle principali:
 - Da creare/configurare?: No.
 
 `lib/rag/embeddings.ts`
-- Serve per: creazione embedding OpenAI.
-- Fa: chiama API embeddings con client/modello runtime e produce vettore + literal pgvector.
-- Input: testo chunk/query + client OpenAI + embedding model.
-- Output: `number[]` embedding.
-- Da creare/configurare?: Sì, OpenAI key via ENV o `/admin` impostazioni.
+- Serve per: serializzazione embedding per pgvector.
+- Fa: converte array numerico nel literal SQL `vector`.
+- Input: `number[]` embedding.
+- Output: string literal pgvector.
+- Da creare/configurare?: No.
 
 `lib/runtime-settings.ts`
 - Serve per: risoluzione impostazioni runtime globali.
-- Fa: legge `app_settings` e applica priorita alle ENV (`ENV > DB > default`).
+- Fa: legge `app_settings` e applica priorita alle ENV (`ENV > DB > default`) anche per provider Ollama/OpenAI.
 - Input: variabili ambiente + tabella `app_settings`.
 - Output: config runtime usata da chat/ingest.
 - Da creare/configurare?: No file; configurare valori in ENV o `/admin`.
+
+`lib/ai/provider.ts`
+- Serve per: astrazione provider AI.
+- Fa: instrada chat/embeddings su OpenAI o Ollama con stessa interfaccia.
+- Input: testo/prompt + runtime settings.
+- Output: risposta chat + usage estimate, embeddings.
+- Da creare/configurare?: Configurare `AI_PROVIDER`/setting e endpoint del provider.
 
 `app/api/chat/route.ts`
 - Serve per: endpoint chat con RAG tenant.
@@ -360,21 +367,45 @@ Tabelle principali:
 
 `OPENAI_API_KEY`
 - Serve per: embeddings e risposta AI.
-- Fa: abilita `POST /api/chat` e `POST /api/ingest`.
+- Fa: abilita `POST /api/chat` e `POST /api/ingest` quando provider=`openai`.
 - Dati da dove arrivano: account OpenAI.
-- Da creare?: Sì, obbligatoria per funzioni AI.
+- Da creare?: Solo se usi OpenAI.
 
 `OPENAI_CHAT_MODEL`
 - Serve per: modello chat.
-- Fa: definisce il modello usato in `/api/chat`.
+- Fa: definisce il modello usato in `/api/chat` quando provider=`openai`.
 - Dati da dove arrivano: configurazione app.
 - Da creare?: No, ha default (`gpt-4o-mini`), ma consigliato impostarlo.
 
 `OPENAI_EMBEDDING_MODEL`
 - Serve per: modello embeddings.
-- Fa: definisce il modello usato in `/api/ingest` e retrieval.
+- Fa: definisce il modello usato in `/api/ingest` e retrieval quando provider=`openai`.
 - Dati da dove arrivano: configurazione app.
 - Da creare?: No, ha default (`text-embedding-3-small`), ma consigliato impostarlo.
+
+`AI_PROVIDER`
+- Serve per: selezione provider AI globale.
+- Fa: forza provider runtime (`ollama` o `openai`).
+- Dati da dove arrivano: ENV o `/admin` settings.
+- Da creare?: No, ma consigliato impostarlo esplicitamente.
+
+`OLLAMA_BASE_URL`
+- Serve per: endpoint HTTP del server Ollama.
+- Fa: abilita chat/embedding quando provider=`ollama`.
+- Dati da dove arrivano: URL del server Ollama (es. `http://localhost:11434`).
+- Da creare?: Sì se usi Ollama.
+
+`OLLAMA_CHAT_MODEL`
+- Serve per: modello chat Ollama.
+- Fa: definisce modello chat (`qwen2.5:7b` default).
+- Dati da dove arrivano: configurazione Ollama.
+- Da creare?: No, ma consigliato.
+
+`OLLAMA_EMBEDDING_MODEL`
+- Serve per: modello embeddings Ollama.
+- Fa: definisce modello embeddings (`nomic-embed-text` default).
+- Dati da dove arrivano: configurazione Ollama.
+- Da creare?: No, ma devi fare `ollama pull nomic-embed-text` se usi Ollama embeddings.
 
 `ADMIN_SECRET`
 - Serve per: protezione endpoint admin globali.
@@ -460,6 +491,21 @@ npm run prisma:deploy
 - `ADMIN_SECRET`
 6. Redeploy.
 
+## Setup Ollama (gratis)
+
+1. Avvia Ollama:
+```bash
+ollama serve
+```
+2. Scarica modelli:
+```bash
+ollama pull qwen2.5:7b
+ollama pull nomic-embed-text
+```
+3. Imposta provider:
+- `AI_PROVIDER=ollama`
+- `OLLAMA_BASE_URL=http://localhost:11434` (o URL pubblico del tuo server Ollama)
+
 ## Setup RLS (dettaglio)
 
 La migrazione `prisma/migrations/0002_rls/migration.sql`:
@@ -516,9 +562,13 @@ Env vars richieste:
 - `DATABASE_URL` (utente `app_user`)
 - `BLOB_READ_WRITE_TOKEN` (Vercel Blob private access)
 - `DATABASE_URL_ADMIN` (opzionale, per operazioni elevate)
-- `OPENAI_API_KEY` (opzionale se configurata da `/admin`, consigliata via ENV)
-- `OPENAI_CHAT_MODEL` (opzionale, altrimenti da `/admin` o default)
-- `OPENAI_EMBEDDING_MODEL` (opzionale, altrimenti da `/admin` o default)
+- `AI_PROVIDER` (`ollama` o `openai`)
+- `OLLAMA_BASE_URL` (se provider `ollama`)
+- `OLLAMA_CHAT_MODEL` (opzionale, default `qwen2.5:7b`)
+- `OLLAMA_EMBEDDING_MODEL` (opzionale, default `nomic-embed-text`)
+- `OPENAI_API_KEY` (se provider `openai`; opzionale se da `/admin`)
+- `OPENAI_CHAT_MODEL` (opzionale, da `/admin` o default)
+- `OPENAI_EMBEDDING_MODEL` (opzionale, da `/admin` o default)
 - `ADMIN_SECRET`
 - `APP_BASE_URL` (opzionale se impostata da `/admin`)
 

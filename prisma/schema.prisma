@@ -101,9 +101,13 @@ model Feedback {
 model AppSetting {
   id                  Int      @id @default(1)
   singleton           String   @unique @default("default")
+  aiProvider          String?  @map("ai_provider")
   openaiApiKey        String?  @map("openai_api_key")
   openaiChatModel     String?  @map("openai_chat_model")
   openaiEmbeddingModel String? @map("openai_embedding_model")
+  ollamaBaseUrl       String?  @map("ollama_base_url")
+  ollamaChatModel     String?  @map("ollama_chat_model")
+  ollamaEmbeddingModel String? @map("ollama_embedding_model")
   appBaseUrl          String?  @map("app_base_url")
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")

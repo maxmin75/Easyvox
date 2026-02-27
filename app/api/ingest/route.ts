@@ -2,20 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { withTenant } from "@/lib/db/tenant";
 import { jsonError } from "@/lib/api/errors";
 import { downloadPrivateBlob } from "@/lib/blob/server";
-import { createOpenAIClient } from "@/lib/openai";
 import { getRuntimeSettings } from "@/lib/runtime-settings";
+import { createEmbeddingWithProvider } from "@/lib/ai/provider";
 import { chunkText } from "@/lib/rag/chunking";
-import { createEmbedding, embeddingToVectorLiteral } from "@/lib/rag/embeddings";
+import { embeddingToVectorLiteral } from "@/lib/rag/embeddings";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   const runtimeSettings = await getRuntimeSettings();
-  if (!runtimeSettings.openaiApiKey) {
-    return jsonError("OPENAI_API_KEY non configurata (env o impostazioni admin)", 500);
-  }
-
-  const openai = createOpenAIClient(runtimeSettings.openaiApiKey);
   const clientId = request.headers.get("x-client-id");
   if (!clientId) return jsonError("clientId mancante", 400);
 
@@ -93,7 +88,7 @@ export async function POST(request: NextRequest) {
     });
 
     for (const chunk of chunks) {
-      const embedding = await createEmbedding(chunk, openai, runtimeSettings.openaiEmbeddingModel);
+      const embedding = await createEmbeddingWithProvider(chunk, runtimeSettings);
       const vector = embeddingToVectorLiteral(embedding);
 
       await tx.$executeRaw`
@@ -108,7 +103,7 @@ export async function POST(request: NextRequest) {
       `;
     }
 
-    return { documentId: document.id, chunkCount: chunks.length };
+    return { documentId: document.id, chunkCount: chunks.length, provider: runtimeSettings.provider };
   });
 
   return NextResponse.json(inserted, { status: 201 });

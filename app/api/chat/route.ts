@@ -3,9 +3,8 @@ import { z } from "zod";
 import { withTenant } from "@/lib/db/tenant";
 import { jsonError } from "@/lib/api/errors";
 import { prisma } from "@/lib/prisma";
-import { createOpenAIClient } from "@/lib/openai";
 import { getRuntimeSettings } from "@/lib/runtime-settings";
-import { createEmbedding } from "@/lib/rag/embeddings";
+import { createEmbeddingWithProvider, completeChatWithProvider } from "@/lib/ai/provider";
 import { retrieveTopChunks } from "@/lib/rag/retrieval";
 
 export const runtime = "nodejs";
@@ -17,11 +16,6 @@ const schema = z.object({
 
 export async function POST(request: NextRequest) {
   const runtimeSettings = await getRuntimeSettings();
-  if (!runtimeSettings.openaiApiKey) {
-    return jsonError("OPENAI_API_KEY non configurata (env o impostazioni admin)", 500);
-  }
-
-  const openai = createOpenAIClient(runtimeSettings.openaiApiKey);
   const clientId = request.headers.get("x-client-id");
   if (!clientId) return jsonError("clientId mancante", 400);
 
@@ -35,48 +29,43 @@ export async function POST(request: NextRequest) {
 
   if (!client) return jsonError("Tenant non trovato", 404);
 
-  const embedding = await createEmbedding(
-    parsed.data.message,
-    openai,
-    runtimeSettings.openaiEmbeddingModel,
-  );
+  let embedding: number[];
+  try {
+    embedding = await createEmbeddingWithProvider(parsed.data.message, runtimeSettings);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Errore embedding provider";
+    return jsonError(detail, 500);
+  }
 
   const result = await withTenant(clientId, async (tx) => {
     const chunks = await retrieveTopChunks(tx, clientId, embedding, 5);
     const context = chunks.map((chunk, index) => `[${index + 1}] ${chunk.content}`).join("\n\n");
 
-    const completion = await openai.responses.create({
-      model: runtimeSettings.openaiChatModel,
-      input: [
-        {
-          role: "system",
-          content: `${client.systemPrompt ?? "Rispondi in modo chiaro, accurato e conciso."}\n\nSe non sai qualcosa, dichiaralo esplicitamente.`,
-        },
-        {
-          role: "user",
-          content: `Contesto RAG:\n${context || "Nessun documento disponibile."}\n\nMessaggio utente:\n${parsed.data.message}`,
-        },
-      ],
-    });
+    const systemPrompt = `${client.systemPrompt ?? "Rispondi in modo chiaro, accurato e conciso."}\n\nSe non sai qualcosa, dichiaralo esplicitamente.`;
+    const userPrompt = `Contesto RAG:\n${context || "Nessun documento disponibile."}\n\nMessaggio utente:\n${parsed.data.message}`;
 
-    const reply = completion.output_text || "Non sono riuscito a generare una risposta in questo momento.";
+    const completion = await completeChatWithProvider(
+      {
+        systemPrompt,
+        userPrompt,
+      },
+      runtimeSettings,
+    );
 
     await tx.conversation.create({
       data: {
         clientId,
         sessionId: parsed.data.sessionId,
         userMessage: parsed.data.message,
-        assistantMessage: reply,
+        assistantMessage: completion.reply,
       },
     });
 
     return {
-      reply,
-      usageEstimate: {
-        inputTokens: completion.usage?.input_tokens ?? null,
-        outputTokens: completion.usage?.output_tokens ?? null,
-      },
+      reply: completion.reply,
+      usageEstimate: completion.usageEstimate,
       sources: chunks.map((chunk) => ({ id: chunk.id, score: chunk.score })),
+      provider: runtimeSettings.provider,
     };
   });
 

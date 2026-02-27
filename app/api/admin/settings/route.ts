@@ -7,10 +7,14 @@ import { envOverridesRuntimeSettings, getRuntimeSettings } from "@/lib/runtime-s
 export const runtime = "nodejs";
 
 const settingsSchema = z.object({
+  aiProvider: z.enum(["openai", "ollama"]).optional(),
   openaiApiKey: z.string().min(20).optional(),
   clearOpenaiApiKey: z.boolean().optional(),
   openaiChatModel: z.string().min(3).max(80).optional(),
   openaiEmbeddingModel: z.string().min(3).max(80).optional(),
+  ollamaBaseUrl: z.string().url().optional(),
+  ollamaChatModel: z.string().min(3).max(80).optional(),
+  ollamaEmbeddingModel: z.string().min(3).max(80).optional(),
   appBaseUrl: z.string().url().optional(),
 });
 
@@ -22,9 +26,13 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     settings: {
+      aiProvider: runtime.provider,
       hasOpenaiApiKey: Boolean(runtime.openaiApiKey),
       openaiChatModel: runtime.openaiChatModel,
       openaiEmbeddingModel: runtime.openaiEmbeddingModel,
+      ollamaBaseUrl: runtime.ollamaBaseUrl,
+      ollamaChatModel: runtime.ollamaChatModel,
+      ollamaEmbeddingModel: runtime.ollamaEmbeddingModel,
       appBaseUrl: runtime.appBaseUrl,
       blobConfigured: runtime.blobConfigured,
     },
@@ -47,16 +55,26 @@ export async function PUT(request: NextRequest) {
     where: { singleton: "default" },
     create: {
       singleton: "default",
+      aiProvider: data.aiProvider,
       openaiApiKey: data.clearOpenaiApiKey ? null : (data.openaiApiKey ?? null),
       openaiChatModel: data.openaiChatModel,
       openaiEmbeddingModel: data.openaiEmbeddingModel,
+      ollamaBaseUrl: data.ollamaBaseUrl,
+      ollamaChatModel: data.ollamaChatModel,
+      ollamaEmbeddingModel: data.ollamaEmbeddingModel,
       appBaseUrl: data.appBaseUrl,
     },
     update: {
+      ...(data.aiProvider ? { aiProvider: data.aiProvider } : {}),
       ...(data.openaiApiKey ? { openaiApiKey: data.openaiApiKey } : {}),
       ...(data.clearOpenaiApiKey ? { openaiApiKey: null } : {}),
       ...(data.openaiChatModel ? { openaiChatModel: data.openaiChatModel } : {}),
       ...(data.openaiEmbeddingModel ? { openaiEmbeddingModel: data.openaiEmbeddingModel } : {}),
+      ...(data.ollamaBaseUrl ? { ollamaBaseUrl: data.ollamaBaseUrl } : {}),
+      ...(data.ollamaChatModel ? { ollamaChatModel: data.ollamaChatModel } : {}),
+      ...(data.ollamaEmbeddingModel
+        ? { ollamaEmbeddingModel: data.ollamaEmbeddingModel }
+        : {}),
       ...(data.appBaseUrl ? { appBaseUrl: data.appBaseUrl } : {}),
     },
   });
@@ -66,9 +84,13 @@ export async function PUT(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     settings: {
+      aiProvider: runtime.provider,
       hasOpenaiApiKey: Boolean(runtime.openaiApiKey),
       openaiChatModel: runtime.openaiChatModel,
       openaiEmbeddingModel: runtime.openaiEmbeddingModel,
+      ollamaBaseUrl: runtime.ollamaBaseUrl,
+      ollamaChatModel: runtime.ollamaChatModel,
+      ollamaEmbeddingModel: runtime.ollamaEmbeddingModel,
       appBaseUrl: runtime.appBaseUrl,
       blobConfigured: runtime.blobConfigured,
     },

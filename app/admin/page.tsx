@@ -12,16 +12,24 @@ type Client = {
 
 type AdminSettingsResponse = {
   settings: {
+    aiProvider: "openai" | "ollama";
     hasOpenaiApiKey: boolean;
     openaiChatModel: string;
     openaiEmbeddingModel: string;
+    ollamaBaseUrl: string | null;
+    ollamaChatModel: string;
+    ollamaEmbeddingModel: string;
     appBaseUrl: string | null;
     blobConfigured: boolean;
   };
   envOverrides: {
+    aiProvider: boolean;
     openaiApiKey: boolean;
     openaiChatModel: boolean;
     openaiEmbeddingModel: boolean;
+    ollamaBaseUrl: boolean;
+    ollamaChatModel: boolean;
+    ollamaEmbeddingModel: boolean;
     appBaseUrl: boolean;
   };
   error?: string;
@@ -35,9 +43,13 @@ export default function AdminPage() {
   const [systemPrompt, setSystemPrompt] = useState("");
   const [status, setStatus] = useState<string>("");
 
+  const [aiProvider, setAiProvider] = useState<"openai" | "ollama">("ollama");
   const [openaiApiKey, setOpenaiApiKey] = useState("");
   const [openaiChatModel, setOpenaiChatModel] = useState("gpt-4o-mini");
   const [openaiEmbeddingModel, setOpenaiEmbeddingModel] = useState("text-embedding-3-small");
+  const [ollamaBaseUrl, setOllamaBaseUrl] = useState("http://localhost:11434");
+  const [ollamaChatModel, setOllamaChatModel] = useState("qwen2.5:7b");
+  const [ollamaEmbeddingModel, setOllamaEmbeddingModel] = useState("nomic-embed-text");
   const [appBaseUrl, setAppBaseUrl] = useState("");
   const [hasOpenaiApiKey, setHasOpenaiApiKey] = useState(false);
   const [blobConfigured, setBlobConfigured] = useState(false);
@@ -95,8 +107,12 @@ export default function AdminPage() {
       return;
     }
 
+    setAiProvider(data.settings.aiProvider);
     setOpenaiChatModel(data.settings.openaiChatModel);
     setOpenaiEmbeddingModel(data.settings.openaiEmbeddingModel);
+    setOllamaBaseUrl(data.settings.ollamaBaseUrl ?? "http://localhost:11434");
+    setOllamaChatModel(data.settings.ollamaChatModel);
+    setOllamaEmbeddingModel(data.settings.ollamaEmbeddingModel);
     setAppBaseUrl(data.settings.appBaseUrl ?? "");
     setHasOpenaiApiKey(data.settings.hasOpenaiApiKey);
     setBlobConfigured(data.settings.blobConfigured);
@@ -114,9 +130,13 @@ export default function AdminPage() {
         "x-admin-secret": adminSecret,
       },
       body: JSON.stringify({
+        aiProvider,
         openaiApiKey: openaiApiKey.trim() || undefined,
         openaiChatModel,
         openaiEmbeddingModel,
+        ollamaBaseUrl: ollamaBaseUrl.trim() || undefined,
+        ollamaChatModel,
+        ollamaEmbeddingModel,
         appBaseUrl: appBaseUrl.trim() || undefined,
       }),
     });
@@ -186,12 +206,47 @@ export default function AdminPage() {
       <section className="card" style={{ padding: 16, display: "grid", gap: 12 }}>
         <h2 style={{ margin: 0, fontSize: 20 }}>Impostazioni API</h2>
         <p className="mono" style={{ margin: 0, fontSize: 12, color: "var(--muted)" }}>
-          Qui puoi impostare le chiavi runtime. Se una variabile ENV è presente su Vercel, ha priorità.
+          ENV ha priorita su DB. Per provider Ollama imposta base URL e modelli.
         </p>
         <form onSubmit={saveSettings} style={{ display: "grid", gap: 10 }}>
+          <select
+            value={aiProvider}
+            onChange={(event) => setAiProvider(event.target.value as "openai" | "ollama")}
+            style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 10 }}
+          >
+            <option value="ollama">Ollama</option>
+            <option value="openai">OpenAI</option>
+          </select>
+
+          <input
+            type="url"
+            placeholder="OLLAMA_BASE_URL (es. http://localhost:11434)"
+            value={ollamaBaseUrl}
+            onChange={(event) => setOllamaBaseUrl(event.target.value)}
+            style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 10 }}
+          />
+          <input
+            required
+            placeholder="Ollama chat model"
+            value={ollamaChatModel}
+            onChange={(event) => setOllamaChatModel(event.target.value)}
+            style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 10 }}
+          />
+          <input
+            required
+            placeholder="Ollama embedding model (es. nomic-embed-text)"
+            value={ollamaEmbeddingModel}
+            onChange={(event) => setOllamaEmbeddingModel(event.target.value)}
+            style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 10 }}
+          />
+
           <input
             type="password"
-            placeholder={hasOpenaiApiKey ? "OpenAI API Key (già presente, inserisci solo per aggiornarla)" : "OpenAI API Key"}
+            placeholder={
+              hasOpenaiApiKey
+                ? "OpenAI API Key (gia presente, inserisci solo per aggiornarla)"
+                : "OpenAI API Key"
+            }
             value={openaiApiKey}
             onChange={(event) => setOpenaiApiKey(event.target.value)}
             style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 10 }}
@@ -210,6 +265,7 @@ export default function AdminPage() {
             onChange={(event) => setOpenaiEmbeddingModel(event.target.value)}
             style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 10 }}
           />
+
           <input
             type="url"
             placeholder="APP_BASE_URL (es. https://ai-chat-hub-nu.vercel.app)"
@@ -233,10 +289,19 @@ export default function AdminPage() {
           </button>
         </form>
         <div className="mono" style={{ fontSize: 12, color: "var(--muted)", display: "grid", gap: 4 }}>
+          <div>Provider attivo: {aiProvider}</div>
           <div>OpenAI key configurata: {hasOpenaiApiKey ? "si" : "no"}</div>
+          <div>ENV override provider: {envOverrides?.aiProvider ? "si" : "no"}</div>
           <div>ENV override OpenAI key: {envOverrides?.openaiApiKey ? "si" : "no"}</div>
-          <div>ENV override chat model: {envOverrides?.openaiChatModel ? "si" : "no"}</div>
-          <div>ENV override embedding model: {envOverrides?.openaiEmbeddingModel ? "si" : "no"}</div>
+          <div>ENV override chat model OpenAI: {envOverrides?.openaiChatModel ? "si" : "no"}</div>
+          <div>
+            ENV override embedding model OpenAI: {envOverrides?.openaiEmbeddingModel ? "si" : "no"}
+          </div>
+          <div>ENV override OLLAMA_BASE_URL: {envOverrides?.ollamaBaseUrl ? "si" : "no"}</div>
+          <div>ENV override OLLAMA_CHAT_MODEL: {envOverrides?.ollamaChatModel ? "si" : "no"}</div>
+          <div>
+            ENV override OLLAMA_EMBEDDING_MODEL: {envOverrides?.ollamaEmbeddingModel ? "si" : "no"}
+          </div>
           <div>ENV override APP_BASE_URL: {envOverrides?.appBaseUrl ? "si" : "no"}</div>
           <div>BLOB_READ_WRITE_TOKEN configurato (ENV): {blobConfigured ? "si" : "no"}</div>
         </div>
