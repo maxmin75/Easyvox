@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prismaAdmin } from "@/lib/prisma-admin";
 import { requireAdmin } from "@/lib/api/admin";
 
 export const runtime = "nodejs";
@@ -12,11 +12,11 @@ export async function GET(request: NextRequest) {
   const where = clientId ? { clientId } : undefined;
 
   const [conversations, leads, feedback, documents, chunks] = await Promise.all([
-    prisma.conversation.count({ where }),
-    prisma.lead.count({ where }),
-    prisma.feedback.count({ where }),
-    prisma.document.count({ where }),
-    prisma.chunk.count({ where }),
+    prismaAdmin.conversation.count({ where }),
+    prismaAdmin.lead.count({ where }),
+    prismaAdmin.feedback.count({ where }),
+    prismaAdmin.document.count({ where }),
+    prismaAdmin.chunk.count({ where }),
   ]);
 
   return NextResponse.json({

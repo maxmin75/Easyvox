@@ -29,9 +29,17 @@ export async function GET(
     return jsonError("Blob non trovato", 404);
   }
 
-  const stream = blobResult.blob.downloadUrl
-    ? await fetch(blobResult.blob.downloadUrl, { cache: "no-store" }).then((r) => r.body)
-    : null;
+  let stream: ReadableStream<Uint8Array> | null = null;
+  if (blobResult.downloadUrl) {
+    stream = await fetch(blobResult.downloadUrl, { cache: "no-store" }).then((r) => r.body);
+  } else if (blobResult.data) {
+    stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(blobResult.data as Uint8Array);
+        controller.close();
+      },
+    });
+  }
 
   if (!stream) {
     return jsonError("Download file non disponibile", 500);

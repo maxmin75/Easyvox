@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prismaAdmin } from "@/lib/prisma-admin";
 import { requireAdmin } from "@/lib/api/admin";
 import { isValidUuid } from "@/lib/tenant";
 
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ exists: false }, { status: 200 });
   }
 
-  const client = await prisma.client.findUnique({
+  const client = await prismaAdmin.client.findUnique({
     where: { id: clientId },
     select: { id: true },
   });

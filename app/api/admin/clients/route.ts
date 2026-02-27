@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+import { prismaAdmin } from "@/lib/prisma-admin";
 import { requireAdmin } from "@/lib/api/admin";
 import { jsonError } from "@/lib/api/errors";
 
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   const denied = requireAdmin(request);
   if (denied) return denied;
 
-  const clients = await prisma.client.findMany({
+  const clients = await prismaAdmin.client.findMany({
     orderBy: { createdAt: "desc" },
   });
 
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   const parsed = createSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return jsonError("Payload non valido", 400);
 
-  const client = await prisma.client.create({ data: parsed.data });
+  const client = await prismaAdmin.client.create({ data: parsed.data });
   return NextResponse.json(client, { status: 201 });
 }
 
@@ -46,7 +46,7 @@ export async function PUT(request: NextRequest) {
   if (!parsed.success) return jsonError("Payload non valido", 400);
 
   const { id, ...data } = parsed.data;
-  const client = await prisma.client.update({ where: { id }, data });
+  const client = await prismaAdmin.client.update({ where: { id }, data });
   return NextResponse.json(client);
 }
 
@@ -57,6 +57,6 @@ export async function DELETE(request: NextRequest) {
   const id = request.nextUrl.searchParams.get("id");
   if (!id) return jsonError("id mancante", 400);
 
-  await prisma.client.delete({ where: { id } });
+  await prismaAdmin.client.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }

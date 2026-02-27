@@ -7,8 +7,14 @@ export async function withTenant<T>(
   clientId: string,
   fn: (tx: TenantTx) => Promise<T>,
 ): Promise<T> {
-  return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${clientId}, true)`;
-    return fn(tx);
-  });
+  return prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.tenant_id', ${clientId}, true)`;
+      return fn(tx);
+    },
+    {
+      timeout: 120_000,
+      maxWait: 10_000,
+    },
+  );
 }

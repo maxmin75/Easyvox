@@ -25,6 +25,8 @@ export type ChatOutput = {
   };
 };
 
+const TARGET_EMBEDDING_DIMENSION = 1536;
+
 function normalizeBaseUrl(baseUrl: string) {
   return baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
 }
@@ -69,7 +71,7 @@ export async function createEmbeddingWithProvider(
       input: text,
     });
 
-    return result.data[0].embedding;
+    return normalizeEmbeddingSize(result.data[0].embedding);
   }
 
   if (!config.ollamaBaseUrl) {
@@ -88,7 +90,7 @@ export async function createEmbeddingWithProvider(
 
     const embedding = result.embeddings?.[0] ?? result.embedding;
     if (!embedding) throw new Error("Embeddings non presenti nella risposta Ollama");
-    return embedding;
+    return normalizeEmbeddingSize(embedding);
   } catch {
     const fallback = await callOllama<{ embedding?: number[] }>(
       config.ollamaBaseUrl,
@@ -103,8 +105,20 @@ export async function createEmbeddingWithProvider(
       throw new Error("Embedding non disponibile da Ollama");
     }
 
-    return fallback.embedding;
+    return normalizeEmbeddingSize(fallback.embedding);
   }
+}
+
+function normalizeEmbeddingSize(values: number[]): number[] {
+  if (values.length === TARGET_EMBEDDING_DIMENSION) {
+    return values;
+  }
+
+  if (values.length > TARGET_EMBEDDING_DIMENSION) {
+    return values.slice(0, TARGET_EMBEDDING_DIMENSION);
+  }
+
+  return [...values, ...new Array(TARGET_EMBEDDING_DIMENSION - values.length).fill(0)];
 }
 
 export async function completeChatWithProvider(

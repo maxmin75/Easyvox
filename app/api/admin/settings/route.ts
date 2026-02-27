@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+import { prismaAdmin } from "@/lib/prisma-admin";
 import { requireAdmin } from "@/lib/api/admin";
 import { envOverridesRuntimeSettings, getRuntimeSettings } from "@/lib/runtime-settings";
 
@@ -51,7 +51,7 @@ export async function PUT(request: NextRequest) {
 
   const data = parsed.data;
 
-  await prisma.appSetting.upsert({
+  await prismaAdmin.appSetting.upsert({
     where: { singleton: "default" },
     create: {
       singleton: "default",

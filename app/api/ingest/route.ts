@@ -55,17 +55,21 @@ export async function POST(request: NextRequest) {
       return jsonError("Blob non trovato", 404);
     }
 
-    const downloadUrl = blobResult.blob.downloadUrl;
-    if (!downloadUrl) {
-      return jsonError("Download blob non disponibile", 500);
-    }
+    if (blobResult.data) {
+      text = new TextDecoder().decode(blobResult.data);
+    } else {
+      const downloadUrl = blobResult.downloadUrl;
+      if (!downloadUrl) {
+        return jsonError("Download blob non disponibile", 500);
+      }
 
-    const response = await fetch(downloadUrl, { cache: "no-store" });
-    if (!response.ok) {
-      return jsonError("Impossibile leggere il file da Blob", 502);
-    }
+      const response = await fetch(downloadUrl, { cache: "no-store" });
+      if (!response.ok) {
+        return jsonError("Impossibile leggere il file da Blob", 502);
+      }
 
-    text = await response.text();
+      text = await response.text();
+    }
     title = fileAsset.filename;
     source = "blob";
   } else {
