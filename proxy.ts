@@ -32,7 +32,7 @@ async function resolveTenant(request: NextRequest, tenant: { clientId?: string; 
   };
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const requiresTenant = TENANT_SCOPED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 
