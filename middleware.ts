@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isValidUuid } from "@/lib/tenant";
 
 const TENANT_SCOPED_PREFIXES = ["/api/chat", "/api/lead", "/api/feedback", "/api/ingest", "/api/files"];
 const SLUG_REGEX = /^[a-z0-9-]{2,80}$/;
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 async function resolveTenant(request: NextRequest, tenant: { clientId?: string; clientSlug?: string }) {
   const url = new URL("/api/internal/client-exists", request.url);
@@ -56,7 +57,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.json({ error: "clientId o username obbligatorio" }, { status: 400 });
   }
 
-  const tenant = isValidUuid(tenantIdentifier)
+  const tenant = UUID_REGEX.test(tenantIdentifier)
     ? { clientId: tenantIdentifier }
     : { clientSlug: tenantIdentifier.toLowerCase() };
 
