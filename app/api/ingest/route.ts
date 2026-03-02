@@ -6,6 +6,8 @@ import { getRuntimeSettings } from "@/lib/runtime-settings";
 import { createEmbeddingWithProvider } from "@/lib/ai/provider";
 import { chunkText } from "@/lib/rag/chunking";
 import { embeddingToVectorLiteral } from "@/lib/rag/embeddings";
+import { getAuthUserFromRequest } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
 
@@ -13,6 +15,14 @@ export async function POST(request: NextRequest) {
   const runtimeSettings = await getRuntimeSettings();
   const clientId = request.headers.get("x-client-id");
   if (!clientId) return jsonError("clientId mancante", 400);
+  const authUser = await getAuthUserFromRequest(request);
+  if (authUser) {
+    const owned = await prisma.client.findFirst({
+      where: { id: clientId, ownerId: authUser.id },
+      select: { id: true },
+    });
+    if (!owned) return jsonError("Agente non trovato", 404);
+  }
 
   const form = await request.formData();
   const file = form.get("file");
@@ -82,33 +92,44 @@ export async function POST(request: NextRequest) {
     return jsonError("Documento vuoto", 400);
   }
 
-  const inserted = await withTenant(clientId, async (tx) => {
-    const document = await tx.document.create({
-      data: {
-        clientId,
-        title,
-        source,
-      },
+  let inserted: { documentId: string; chunkCount: number; provider: string };
+  try {
+    inserted = await withTenant(clientId, async (tx) => {
+      const document = await tx.document.create({
+        data: {
+          clientId,
+          title,
+          source,
+        },
+      });
+
+      for (const chunk of chunks) {
+        const embedding = await createEmbeddingWithProvider(chunk, runtimeSettings);
+        const vector = embeddingToVectorLiteral(embedding);
+
+        await tx.$executeRaw`
+          INSERT INTO chunks (client_id, document_id, content, metadata, embedding)
+          VALUES (
+            ${clientId}::uuid,
+            ${document.id}::uuid,
+            ${chunk},
+            ${JSON.stringify({ source: title })}::jsonb,
+            ${vector}::vector
+          )
+        `;
+      }
+
+      return { documentId: document.id, chunkCount: chunks.length, provider: runtimeSettings.provider };
     });
-
-    for (const chunk of chunks) {
-      const embedding = await createEmbeddingWithProvider(chunk, runtimeSettings);
-      const vector = embeddingToVectorLiteral(embedding);
-
-      await tx.$executeRaw`
-        INSERT INTO chunks (client_id, document_id, content, metadata, embedding)
-        VALUES (
-          ${clientId}::uuid,
-          ${document.id}::uuid,
-          ${chunk},
-          ${JSON.stringify({ source: title })}::jsonb,
-          ${vector}::vector
-        )
-      `;
-    }
-
-    return { documentId: document.id, chunkCount: chunks.length, provider: runtimeSettings.provider };
-  });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Errore ingest provider";
+    return jsonError(
+      detail.includes("ECONNREFUSED")
+        ? "Provider AI non raggiungibile (Ollama offline). Avvia Ollama o passa a OpenAI."
+        : detail,
+      500,
+    );
+  }
 
   return NextResponse.json(inserted, { status: 201 });
 }

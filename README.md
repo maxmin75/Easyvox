@@ -540,7 +540,7 @@ client_id = current_setting('app.tenant_id', true)::uuid
 - `GET/PUT /api/admin/settings`
 
 ### Endpoint interno middleware
-- `GET /api/internal/client-exists?clientId=<uuid>` (protetto con `x-admin-secret`)
+- `GET /api/internal/client-exists?clientId=<uuid>` oppure `?clientSlug=<slug>` (protetto con `x-admin-secret`)
 
 ## Widget embeddabile
 
@@ -551,10 +551,18 @@ Uso:
 
 ```tsx
 <ChatWidget clientId="<tenant-uuid>" apiBaseUrl="https://your-app.vercel.app" />
+<ChatWidget username="<tenant-slug>" apiBaseUrl="https://your-app.vercel.app" />
 ```
+
+UI widget:
+- label tenant mostrata come `Ditta`
+- messaggio utente etichettato come `tu`
+- nome `assistant` configurabile da backend (`clients.assistant_name`, fallback `Assistant`)
 
 Pagina demo:
 - `/demo?clientId=<tenant-uuid>`
+- `/demo?username=<tenant-slug>`
+- `/demo?ditta=<tenant-slug>`
 
 ## Deploy su Vercel
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prismaAdmin } from "@/lib/prisma-admin";
-import { requireAdmin } from "@/lib/api/admin";
+import { requireAdminUser } from "@/lib/api/admin";
 import { envOverridesRuntimeSettings, getRuntimeSettings } from "@/lib/runtime-settings";
 
 export const runtime = "nodejs";
@@ -19,7 +19,7 @@ const settingsSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
-  const denied = requireAdmin(request);
+  const { denied } = await requireAdminUser(request);
   if (denied) return denied;
 
   const runtime = await getRuntimeSettings();
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const denied = requireAdmin(request);
+  const { denied } = await requireAdminUser(request);
   if (denied) return denied;
 
   const parsed = settingsSchema.safeParse(await request.json().catch(() => null));
