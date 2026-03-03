@@ -121,8 +121,11 @@ export default function AdminEmailPage() {
           Configura invio automatico quando in chat emerge intento di acquisto.
         </p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Link href="/admin" style={linkStyle}>
-            Torna a Dashboard
+          <Link href="/admin/system-settings" style={linkStyle}>
+            Torna a sistema
+          </Link>
+          <Link href="/admin/agents" style={secondaryLinkStyle}>
+            Vai ad agenti
           </Link>
           <button type="button" onClick={() => void loadSettings()} style={secondaryButtonStyle}>
             Ricarica
@@ -278,6 +281,17 @@ const linkStyle: CSSProperties = {
   border: "1px solid var(--ink)",
   background: "var(--ink)",
   color: "white",
+  padding: "8px 12px",
+  textDecoration: "none",
+};
+
+const secondaryLinkStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  borderRadius: 10,
+  border: "1px solid var(--line)",
+  background: "white",
+  color: "inherit",
   padding: "8px 12px",
   textDecoration: "none",
 };
