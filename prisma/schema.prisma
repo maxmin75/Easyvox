@@ -13,6 +13,7 @@ model Client {
   name         String
   slug         String     @unique
   assistantName String?   @map("assistant_name")
+  canTakeAppointments Boolean @default(true) @map("can_take_appointments")
   systemPrompt String?    @map("system_prompt")
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
@@ -21,6 +22,7 @@ model Client {
   chunks       Chunk[]
   conversations Conversation[]
   leads        Lead[]
+  appointments Appointment[]
   feedback     Feedback[]
   fileAssets   FileAsset[]
 
@@ -103,14 +105,21 @@ model Conversation {
 model Lead {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   clientId  String   @map("client_id") @db.Uuid
+  sessionId String?  @map("session_id")
   name      String
-  email     String
+  email     String?
+  phone     String?
+  website   String?
   message   String?
+  purchaseIntentDetectedAt DateTime? @map("purchase_intent_detected_at")
+  purchaseEmailSentAt      DateTime? @map("purchase_email_sent_at")
+  purchaseEmailError       String?   @map("purchase_email_error")
   createdAt DateTime @default(now()) @map("created_at")
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([clientId])
+  @@index([clientId, sessionId])
   @@map("leads")
 }
 
@@ -128,6 +137,26 @@ model Feedback {
   @@map("feedback")
 }
 
+model Appointment {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId     String   @map("client_id") @db.Uuid
+  sessionId    String?  @map("session_id")
+  fullName     String   @map("full_name")
+  email        String?
+  phone        String?
+  scheduledFor DateTime @map("scheduled_for")
+  timezone     String?
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([clientId, scheduledFor])
+  @@index([clientId, sessionId])
+  @@map("appointments")
+}
+
 model AppSetting {
   id                  Int      @id @default(1)
   singleton           String   @unique @default("default")
@@ -139,6 +168,13 @@ model AppSetting {
   ollamaChatModel     String?  @map("ollama_chat_model")
   ollamaEmbeddingModel String? @map("ollama_embedding_model")
   appBaseUrl          String?  @map("app_base_url")
+  purchaseEmailEnabled Boolean  @default(false) @map("purchase_email_enabled")
+  resendApiKey        String?  @map("resend_api_key")
+  purchaseEmailFrom   String?  @map("purchase_email_from")
+  purchaseEmailReplyTo String? @map("purchase_email_reply_to")
+  purchaseEmailSubjectTemplate String? @map("purchase_email_subject_template")
+  purchaseEmailBodyTemplate String? @map("purchase_email_body_template")
+  purchaseIntentKeywords String? @map("purchase_intent_keywords")
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 

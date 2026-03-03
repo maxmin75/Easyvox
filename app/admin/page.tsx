@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 
 type Client = {
@@ -7,6 +8,7 @@ type Client = {
   name: string;
   slug: string;
   assistantName: string | null;
+  canTakeAppointments: boolean;
   systemPrompt: string | null;
   createdAt: string;
 };
@@ -59,11 +61,13 @@ export default function AdminPage() {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [assistantName, setAssistantName] = useState("");
+  const [canTakeAppointments, setCanTakeAppointments] = useState(true);
   const [systemPrompt, setSystemPrompt] = useState("");
   const [editClientId, setEditClientId] = useState("");
   const [editName, setEditName] = useState("");
   const [editSlug, setEditSlug] = useState("");
   const [editAssistantName, setEditAssistantName] = useState("");
+  const [editCanTakeAppointments, setEditCanTakeAppointments] = useState(true);
   const [editSystemPrompt, setEditSystemPrompt] = useState("");
   const [status, setStatus] = useState<string>("");
   const [agentTab, setAgentTab] = useState<"create" | "manage">("create");
@@ -102,6 +106,7 @@ export default function AdminPage() {
           setEditName(data[0].name);
           setEditSlug(data[0].slug);
           setEditAssistantName(data[0].assistantName ?? "");
+          setEditCanTakeAppointments(data[0].canTakeAppointments ?? true);
           setEditSystemPrompt(data[0].systemPrompt ?? "");
           void loadKnowledge(data[0].id);
         }
@@ -150,6 +155,7 @@ export default function AdminPage() {
       setEditName(first.name);
       setEditSlug(first.slug);
       setEditAssistantName(first.assistantName ?? "");
+      setEditCanTakeAppointments(first.canTakeAppointments ?? true);
       setEditSystemPrompt(first.systemPrompt ?? "");
     }
     setStatus(`Agenti caricati: ${data.length}`);
@@ -165,6 +171,7 @@ export default function AdminPage() {
         name,
         slug,
         assistantName: assistantName.trim() || undefined,
+        canTakeAppointments,
         systemPrompt,
       }),
     });
@@ -179,6 +186,7 @@ export default function AdminPage() {
     setName("");
     setSlug("");
     setAssistantName("");
+    setCanTakeAppointments(true);
     setSystemPrompt("");
     setStatus(`Creato agente ${data.name}`);
     await loadClients();
@@ -191,6 +199,7 @@ export default function AdminPage() {
     setEditName(client.name);
     setEditSlug(client.slug);
     setEditAssistantName(client.assistantName ?? "");
+    setEditCanTakeAppointments(client.canTakeAppointments ?? true);
     setEditSystemPrompt(client.systemPrompt ?? "");
   }
 
@@ -216,6 +225,7 @@ export default function AdminPage() {
           name: editName,
           slug: editSlug,
           assistantName: editAssistantName.trim() || undefined,
+          canTakeAppointments: editCanTakeAppointments,
           systemPrompt: editSystemPrompt,
         }),
       });
@@ -254,6 +264,7 @@ export default function AdminPage() {
       setEditName("");
       setEditSlug("");
       setEditAssistantName("");
+      setEditCanTakeAppointments(true);
       setEditSystemPrompt("");
       await loadClients();
     } finally {
@@ -475,6 +486,22 @@ export default function AdminPage() {
           >
             Carica impostazioni API
           </button>
+          <Link
+            href="/admin/email"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              width: "fit-content",
+              borderRadius: 10,
+              border: "1px solid var(--line)",
+              background: "white",
+              padding: "8px 12px",
+              textDecoration: "none",
+              color: "inherit",
+            }}
+          >
+            Automazione email
+          </Link>
         </div>
       </section>
 
@@ -647,6 +674,14 @@ export default function AdminPage() {
               rows={4}
               style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 10, resize: "vertical" }}
             />
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+              <input
+                type="checkbox"
+                checked={canTakeAppointments}
+                onChange={(event) => setCanTakeAppointments(event.target.checked)}
+              />
+              Abilita presa appuntamenti in chat
+            </label>
             <button
               type="submit"
               style={{
@@ -704,6 +739,14 @@ export default function AdminPage() {
               onChange={(event) => setEditSystemPrompt(event.target.value)}
               style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 10, resize: "vertical" }}
             />
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+              <input
+                type="checkbox"
+                checked={editCanTakeAppointments}
+                onChange={(event) => setEditCanTakeAppointments(event.target.checked)}
+              />
+              Abilita presa appuntamenti in chat
+            </label>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button
                 type="submit"
@@ -853,6 +896,9 @@ export default function AdminPage() {
               <p style={{ margin: 0, color: "var(--muted)" }}>slug: {client.slug}</p>
               <p style={{ margin: 0, color: "var(--muted)" }}>
                 assistant: {client.assistantName?.trim() || "Assistant"}
+              </p>
+              <p style={{ margin: 0, color: "var(--muted)" }}>
+                appuntamenti chat: {client.canTakeAppointments ? "abilitati" : "disabilitati"}
               </p>
             </article>
           ))}
