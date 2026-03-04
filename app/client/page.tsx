@@ -220,6 +220,7 @@ export default function ClientHomePage() {
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button type="button" onClick={() => void loadTenants()} style={quickButtonStyle}>Ricarica tenant</button>
           <button type="button" onClick={logout} style={quickButtonStyle}>Logout</button>
+          <Link href="/client/profile-settings" style={quickLinkStyle}>Impostazioni Profilo</Link>
           <Link href="/demo" style={quickLinkStyle}>Apri chat demo</Link>
         </div>
       </section>

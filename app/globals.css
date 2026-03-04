@@ -141,6 +141,58 @@ textarea {
   gap: 10px;
 }
 
+.topbar-settings-link {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid #0b0b0b;
+  background: #0b0b0b;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  box-shadow: 0 8px 20px rgba(10, 10, 10, 0.18);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.topbar-settings-link:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(10, 10, 10, 0.22);
+}
+
+.topbar-settings-link svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.topbar-settings-tooltip {
+  position: relative;
+}
+
+.topbar-settings-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: calc(100% + 10px);
+  background: #0b0b0b;
+  color: #ffffff;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1;
+  padding: 6px 8px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  white-space: nowrap;
+}
+
+.topbar-settings-tooltip:hover::after {
+  opacity: 1;
+}
+
 .topbar-auth-desktop-small {
   min-height: 28px;
   padding: 0 13px;

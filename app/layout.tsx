@@ -7,6 +7,7 @@ import { prismaAdmin } from "@/lib/prisma-admin";
 import TopbarAuthAction from "@/components/TopbarAuthAction";
 import MobileTopbarMenu from "@/components/MobileTopbarMenu";
 import TopbarLogoTypewriter from "@/components/TopbarLogoTypewriter";
+import TopbarSettingsLink from "@/components/TopbarSettingsLink";
 import { isEasyVoxAdminEmail } from "@/lib/admin/access";
 import "./globals.css";
 
@@ -41,6 +42,7 @@ export default async function RootLayout({
   const token = cookieStore.get(authCookieName)?.value ?? null;
   const authUser = (await getAuthUserFromToken(token)) ?? (await getAuthUserFromNextAuthSession());
   const isAdmin = Boolean(authUser && isEasyVoxAdminEmail(authUser.email));
+  const settingsHref = authUser ? (isAdmin ? "/admin/system-settings" : "/client/profile-settings") : null;
   const activeAgents = authUser
     ? prismaAdmin.client.findMany({
         where: { ownerId: authUser.id },
@@ -115,6 +117,7 @@ export default async function RootLayout({
               </Link>
               {renderTopbarNav("topbar-nav-desktop")}
               <div className="topbar-actions-desktop">
+                {settingsHref ? <TopbarSettingsLink href={settingsHref} /> : null}
                 <TopbarAuthAction
                   isAuthenticated={Boolean(authUser)}
                   className="topbar-auth topbar-auth-ghost topbar-auth-desktop-small"
@@ -125,7 +128,12 @@ export default async function RootLayout({
                   </Link>
                 ) : null}
               </div>
-              <MobileTopbarMenu isAuthenticated={Boolean(authUser)} isAdmin={isAdmin} agents={resolvedAgents} />
+              <MobileTopbarMenu
+                isAuthenticated={Boolean(authUser)}
+                isAdmin={isAdmin}
+                agents={resolvedAgents}
+                settingsHref={settingsHref}
+              />
             </div>
           </div>
         </header>

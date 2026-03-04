@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRef } from "react";
 import TopbarAuthAction from "@/components/TopbarAuthAction";
+import TopbarSettingsLink from "@/components/TopbarSettingsLink";
 
 type Agent = {
   id: string;
@@ -14,9 +15,15 @@ type MobileTopbarMenuProps = {
   isAuthenticated: boolean;
   isAdmin: boolean;
   agents: Agent[];
+  settingsHref: string | null;
 };
 
-export default function MobileTopbarMenu({ isAuthenticated, isAdmin, agents }: MobileTopbarMenuProps) {
+export default function MobileTopbarMenu({
+  isAuthenticated,
+  isAdmin,
+  agents,
+  settingsHref,
+}: MobileTopbarMenuProps) {
   const detailsRef = useRef<HTMLDetailsElement>(null);
 
   function closeMenu() {
@@ -27,6 +34,9 @@ export default function MobileTopbarMenu({ isAuthenticated, isAdmin, agents }: M
 
   return (
     <div className="topbar-mobile-controls">
+      {isAuthenticated && settingsHref ? (
+        <TopbarSettingsLink href={settingsHref} className="topbar-settings-link topbar-settings-tooltip" />
+      ) : null}
       <TopbarAuthAction isAuthenticated={isAuthenticated} className="topbar-auth topbar-auth-ghost" />
       {!isAuthenticated ? (
         <Link href="/login" className="topbar-auth topbar-auth-solid" onClick={closeMenu}>
