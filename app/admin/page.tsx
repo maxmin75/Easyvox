@@ -49,6 +49,13 @@ export default function AdminHomePage() {
       <section className="card" style={{ padding: 16, display: "grid", gap: 12 }}>
         <h2 style={{ margin: 0, fontSize: 20 }}>Aree di configurazione</h2>
         <div style={{ display: "grid", gap: 10 }}>
+          <Link href="/admin/control-center" style={cardLinkStyle}>
+            <strong>Control Center</strong>
+            <span className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>
+              Utenti registrati, acquisti, ingressi alle aree cliente
+            </span>
+          </Link>
+
           <Link href="/admin/system-settings" style={cardLinkStyle}>
             <strong>Impostazioni di sistema</strong>
             <span className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>

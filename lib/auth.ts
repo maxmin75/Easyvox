@@ -1,6 +1,7 @@
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prismaAdmin } from "@/lib/prisma-admin";
+import { getServerAuthSession } from "@/auth";
 
 const SESSION_COOKIE = "easyvox_session";
 const SESSION_TTL_DAYS = 30;
@@ -15,7 +16,8 @@ export function hashPassword(password: string): string {
   return `${salt}:${hash}`;
 }
 
-export function verifyPassword(password: string, passwordHash: string): boolean {
+export function verifyPassword(password: string, passwordHash: string | null | undefined): boolean {
+  if (!passwordHash) return false;
   const [salt, storedHash] = passwordHash.split(":");
   if (!salt || !storedHash) return false;
   const candidateHash = scryptSync(password, salt, 64).toString("hex");
@@ -66,7 +68,9 @@ export async function invalidateSessionFromRequest(request: NextRequest) {
 
 export async function getAuthUserFromRequest(request: NextRequest) {
   const token = request.cookies.get(SESSION_COOKIE)?.value;
-  return getAuthUserFromToken(token ?? null);
+  const legacyUser = await getAuthUserFromToken(token ?? null);
+  if (legacyUser) return legacyUser;
+  return getAuthUserFromNextAuthSession();
 }
 
 export async function getAuthUserFromToken(token: string | null) {
@@ -88,6 +92,25 @@ export async function getAuthUserFromToken(token: string | null) {
   }
 
   return session.user;
+}
+
+export async function getAuthUserFromNextAuthSession() {
+  const session = await getServerAuthSession();
+  if (!session?.user) return null;
+
+  if (session.user.id) {
+    const user = await prismaAdmin.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true, email: true, createdAt: true },
+    });
+    if (user) return user;
+  }
+
+  if (!session.user.email) return null;
+  return prismaAdmin.user.findUnique({
+    where: { email: session.user.email },
+    select: { id: true, email: true, createdAt: true },
+  });
 }
 
 export const authCookieName = SESSION_COOKIE;

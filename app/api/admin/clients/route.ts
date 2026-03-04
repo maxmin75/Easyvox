@@ -12,6 +12,8 @@ const createSchema = z.object({
   name: z.string().min(2).max(120),
   slug: z.string().min(2).max(80).regex(/^[a-z0-9-]+$/),
   assistantName: z.string().min(2).max(80).optional(),
+  canTakeAppointments: z.boolean().optional(),
+  requireProfiling: z.boolean().optional(),
   systemPrompt: z.string().max(2000).optional(),
 });
 

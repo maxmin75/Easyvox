@@ -1,0 +1,2 @@
+ALTER TABLE clients
+  ADD COLUMN IF NOT EXISTS can_take_appointments BOOLEAN NOT NULL DEFAULT true;

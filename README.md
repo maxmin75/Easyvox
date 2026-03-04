@@ -489,7 +489,32 @@ npm run prisma:deploy
 - `BLOB_READ_WRITE_TOKEN`
 - `OPENAI_API_KEY` (oppure config da `/admin`)
 - `ADMIN_SECRET`
+- `AUTH_SECRET`
+- `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`
+- `AUTH_TWITTER_ID` / `AUTH_TWITTER_SECRET`
+- `AUTH_FACEBOOK_ID` / `AUTH_FACEBOOK_SECRET`
 6. Redeploy.
+
+## Login Social con Auth.js (NextAuth)
+
+Questa app supporta anche login social self-hosted con Auth.js su:
+- Google
+- X.com (provider `twitter`)
+- Facebook
+
+Variabili richieste:
+- `AUTH_SECRET` (oppure `NEXTAUTH_SECRET`)
+- `NEXTAUTH_URL` (es. `http://localhost:3000`)
+- `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`
+- `AUTH_TWITTER_ID`, `AUTH_TWITTER_SECRET`
+- `AUTH_FACEBOOK_ID`, `AUTH_FACEBOOK_SECRET`
+
+Callback URL da impostare nei provider OAuth:
+- `http://localhost:3000/api/auth/callback/google`
+- `http://localhost:3000/api/auth/callback/twitter`
+- `http://localhost:3000/api/auth/callback/facebook`
+
+In produzione sostituisci `http://localhost:3000` con il tuo dominio pubblico.
 
 ## Setup Ollama (gratis)
 

@@ -9,6 +9,7 @@ type Client = {
   slug: string;
   assistantName: string | null;
   canTakeAppointments: boolean;
+  requireProfiling: boolean;
   systemPrompt: string | null;
   createdAt: string;
 };
@@ -37,12 +38,14 @@ export default function AdminPage() {
   const [slug, setSlug] = useState("");
   const [assistantName, setAssistantName] = useState("");
   const [canTakeAppointments, setCanTakeAppointments] = useState(true);
+  const [requireProfiling, setRequireProfiling] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState("");
   const [editClientId, setEditClientId] = useState("");
   const [editName, setEditName] = useState("");
   const [editSlug, setEditSlug] = useState("");
   const [editAssistantName, setEditAssistantName] = useState("");
   const [editCanTakeAppointments, setEditCanTakeAppointments] = useState(true);
+  const [editRequireProfiling, setEditRequireProfiling] = useState(false);
   const [editSystemPrompt, setEditSystemPrompt] = useState("");
   const [status, setStatus] = useState<string>("");
   const [agentTab, setAgentTab] = useState<"create" | "manage">("create");
@@ -71,6 +74,7 @@ export default function AdminPage() {
           setEditSlug(data[0].slug);
           setEditAssistantName(data[0].assistantName ?? "");
           setEditCanTakeAppointments(data[0].canTakeAppointments ?? true);
+          setEditRequireProfiling(data[0].requireProfiling ?? false);
           setEditSystemPrompt(data[0].systemPrompt ?? "");
           void loadKnowledge(data[0].id);
         }
@@ -120,6 +124,7 @@ export default function AdminPage() {
       setEditSlug(first.slug);
       setEditAssistantName(first.assistantName ?? "");
       setEditCanTakeAppointments(first.canTakeAppointments ?? true);
+      setEditRequireProfiling(first.requireProfiling ?? false);
       setEditSystemPrompt(first.systemPrompt ?? "");
     }
     setStatus(`Agenti caricati: ${data.length}`);
@@ -136,6 +141,7 @@ export default function AdminPage() {
         slug,
         assistantName: assistantName.trim() || undefined,
         canTakeAppointments,
+        requireProfiling,
         systemPrompt,
       }),
     });
@@ -151,6 +157,7 @@ export default function AdminPage() {
     setSlug("");
     setAssistantName("");
     setCanTakeAppointments(true);
+    setRequireProfiling(false);
     setSystemPrompt("");
     setStatus(`Creato agente ${data.name}`);
     await loadClients();
@@ -164,6 +171,7 @@ export default function AdminPage() {
     setEditSlug(client.slug);
     setEditAssistantName(client.assistantName ?? "");
     setEditCanTakeAppointments(client.canTakeAppointments ?? true);
+    setEditRequireProfiling(client.requireProfiling ?? false);
     setEditSystemPrompt(client.systemPrompt ?? "");
   }
 
@@ -190,6 +198,7 @@ export default function AdminPage() {
           slug: editSlug,
           assistantName: editAssistantName.trim() || undefined,
           canTakeAppointments: editCanTakeAppointments,
+          requireProfiling: editRequireProfiling,
           systemPrompt: editSystemPrompt,
         }),
       });
@@ -229,6 +238,7 @@ export default function AdminPage() {
       setEditSlug("");
       setEditAssistantName("");
       setEditCanTakeAppointments(true);
+      setEditRequireProfiling(false);
       setEditSystemPrompt("");
       await loadClients();
     } finally {
@@ -491,6 +501,14 @@ export default function AdminPage() {
               />
               Abilita presa appuntamenti in chat
             </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+              <input
+                type="checkbox"
+                checked={requireProfiling}
+                onChange={(event) => setRequireProfiling(event.target.checked)}
+              />
+              Richiedi nome ed email prima della chat
+            </label>
             <button
               type="submit"
               style={{
@@ -555,6 +573,14 @@ export default function AdminPage() {
                 onChange={(event) => setEditCanTakeAppointments(event.target.checked)}
               />
               Abilita presa appuntamenti in chat
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+              <input
+                type="checkbox"
+                checked={editRequireProfiling}
+                onChange={(event) => setEditRequireProfiling(event.target.checked)}
+              />
+              Richiedi nome ed email prima della chat
             </label>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button
@@ -708,6 +734,9 @@ export default function AdminPage() {
               </p>
               <p style={{ margin: 0, color: "var(--muted)" }}>
                 appuntamenti chat: {client.canTakeAppointments ? "abilitati" : "disabilitati"}
+              </p>
+              <p style={{ margin: 0, color: "var(--muted)" }}>
+                profilazione chat: {client.requireProfiling ? "attiva" : "disattiva"}
               </p>
             </article>
           ))}

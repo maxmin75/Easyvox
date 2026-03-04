@@ -19,6 +19,8 @@ export const runtime = "nodejs";
 const schema = z.object({
   sessionId: z.string().min(3),
   message: z.string().min(1).max(4000),
+  customerName: z.string().trim().min(1).max(120).optional(),
+  customerEmail: z.string().email().max(190).optional(),
   useEasyvoxChat: z.boolean().optional(),
 });
 
@@ -246,7 +248,18 @@ export async function POST(request: NextRequest) {
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return jsonError("Payload non valido", 400);
   let clientId = request.headers.get("x-client-id");
+  const clientSlug = request.headers.get("x-client-slug")?.trim().toLowerCase() ?? "";
   const forceEasyvoxChat = parsed.data.useEasyvoxChat === true;
+  const payloadCustomerName = parsed.data.customerName?.trim() ?? "";
+  const payloadCustomerEmail = parsed.data.customerEmail?.trim().toLowerCase() ?? "";
+
+  if (!clientId && !forceEasyvoxChat && clientSlug) {
+    const bySlug = await prisma.client.findUnique({
+      where: { slug: clientSlug },
+      select: { id: true },
+    });
+    clientId = bySlug?.id ?? null;
+  }
 
   if (!clientId && !forceEasyvoxChat) {
     if (authUser) {
@@ -261,10 +274,15 @@ export async function POST(request: NextRequest) {
 
   if (!clientId) {
     try {
+      const easyvoxCustomerLine =
+        payloadCustomerName || payloadCustomerEmail
+          ? `\nCliente: ${payloadCustomerName || "Cliente"}${payloadCustomerEmail ? ` (${payloadCustomerEmail})` : ""}.`
+          : "";
       const completion = await completeChatWithProvider(
         {
           systemPrompt:
-            "Sei Easyvox chat, helpdesk ufficiale EasyVox per utenti che stanno valutando o attivando il servizio. Rispondi in modo pratico e operativo: onboarding, configurazione, pricing, attivazione, integrazioni, troubleshooting di base. Se mancano dettagli specifici di un'azienda, dichiaralo e proponi i passaggi successivi.",
+            `Sei Easyvox chat, helpdesk ufficiale EasyVox per utenti che stanno valutando o attivando il servizio. Rispondi in modo pratico e operativo: onboarding, configurazione, pricing, attivazione, integrazioni, troubleshooting di base. Se mancano dettagli specifici di un'azienda, dichiaralo e proponi i passaggi successivi.
+Rivolgiti sempre al cliente per nome quando appropriato.${easyvoxCustomerLine}`,
           userPrompt: parsed.data.message,
         },
         runtimeSettings,
@@ -296,10 +314,20 @@ export async function POST(request: NextRequest) {
 
   const client = await prisma.client.findUnique({
     where: { id: clientId },
-    select: { id: true, name: true, assistantName: true, systemPrompt: true, canTakeAppointments: true },
+    select: {
+      id: true,
+      name: true,
+      assistantName: true,
+      systemPrompt: true,
+      canTakeAppointments: true,
+      requireProfiling: true,
+    },
   });
 
   if (!client) return jsonError("Tenant non trovato", 404);
+  if (client.requireProfiling && (!payloadCustomerName || !payloadCustomerEmail)) {
+    return jsonError("Profilazione obbligatoria: nome ed email sono richiesti prima di chattare.", 400);
+  }
 
   let embedding: number[];
   try {
@@ -315,6 +343,8 @@ export async function POST(request: NextRequest) {
       const chunks = await retrieveTopChunks(tx, resolvedClientId, embedding, 5);
       const context = chunks.map((chunk, index) => `[${index + 1}] ${chunk.content}`).join("\n\n");
       const nowIso = new Date().toISOString();
+      const customerName = payloadCustomerName;
+      const customerEmail = payloadCustomerEmail;
 
       const intentAnalysis = await detectAppointmentIntent(parsed.data.message, nowIso, runtimeSettings).catch(
         () => null,
@@ -366,10 +396,15 @@ export async function POST(request: NextRequest) {
           finalReply = "Per questo agente la presa appuntamenti e disabilitata.";
           usageEstimate = intentAnalysis.usageEstimate;
         } else {
-        const missingFields = getMissingAppointmentFields(intentAnalysis.data);
+        const effectiveAppointmentData = {
+          ...intentAnalysis.data,
+          fullName: intentAnalysis.data.fullName?.trim() || customerName || null,
+          email: intentAnalysis.data.email?.trim() || customerEmail || null,
+        };
+        const missingFields = getMissingAppointmentFields(effectiveAppointmentData);
 
         if (missingFields.length === 0) {
-          const scheduledForIso = normalizeScheduledFor(intentAnalysis.data.scheduledFor);
+          const scheduledForIso = normalizeScheduledFor(effectiveAppointmentData.scheduledFor);
           if (!scheduledForIso) {
             finalReply = "Per creare l'appuntamento mi serve una data/ora valida (es: 28/03/2026 15:00).";
             usageEstimate = intentAnalysis.usageEstimate;
@@ -396,12 +431,12 @@ export async function POST(request: NextRequest) {
             data: {
               clientId: resolvedClientId,
               sessionId: parsed.data.sessionId,
-              fullName: intentAnalysis.data.fullName!.trim(),
-              email: intentAnalysis.data.email ?? null,
-              phone: intentAnalysis.data.phone ?? null,
+              fullName: effectiveAppointmentData.fullName!.trim(),
+              email: effectiveAppointmentData.email ?? null,
+              phone: effectiveAppointmentData.phone ?? null,
               scheduledFor: new Date(scheduledForIso),
-              timezone: intentAnalysis.data.timezone ?? null,
-              notes: intentAnalysis.data.notes ?? null,
+              timezone: effectiveAppointmentData.timezone ?? null,
+              notes: effectiveAppointmentData.notes ?? null,
             },
           });
           appointmentCreated = true;
@@ -425,7 +460,10 @@ export async function POST(request: NextRequest) {
         usageEstimate = intentAnalysis.usageEstimate;
         }
       } else {
-        const systemPrompt = `${client.systemPrompt ?? "Rispondi in modo chiaro, accurato e conciso."}\n\nSe non sai qualcosa, dichiaralo esplicitamente.`;
+        const customerDirective = customerName
+          ? `Rivolgiti al cliente per nome quando appropriato: ${customerName}.`
+          : "Se non conosci il nome del cliente, chiedilo con naturalezza solo quando utile.";
+        const systemPrompt = `${client.systemPrompt ?? "Rispondi in modo chiaro, accurato e conciso."}\n\nSe non sai qualcosa, dichiaralo esplicitamente.\n${customerDirective}`;
         const userPrompt = `Contesto RAG:\n${context || "Nessun documento disponibile."}\n\nMessaggio utente:\n${parsed.data.message}`;
 
         const completion = await completeChatWithProvider(
@@ -450,9 +488,6 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      const hasCrmData = Boolean(
-        mergedCrm.name?.trim() || mergedCrm.email?.trim() || mergedCrm.phone?.trim() || mergedCrm.website?.trim(),
-      );
       let leadSnapshot: {
         id: string;
         name: string;
@@ -473,47 +508,45 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      if (hasCrmData) {
-        if (leadSnapshot) {
-          leadSnapshot = await tx.lead.update({
-            where: { id: leadSnapshot.id },
-            data: {
-              name: mergedCrm.name?.trim() || leadSnapshot.name,
-              email: mergedCrm.email?.trim() || leadSnapshot.email,
-              phone: mergedCrm.phone?.trim() || leadSnapshot.phone,
-              website: mergedCrm.website?.trim() || leadSnapshot.website,
-              message: parsed.data.message,
-            },
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              phone: true,
-              website: true,
-              purchaseEmailSentAt: true,
-            },
-          });
-        } else {
-          leadSnapshot = await tx.lead.create({
-            data: {
-              clientId: resolvedClientId,
-              sessionId: parsed.data.sessionId,
-              name: mergedCrm.name?.trim() || "Contatto chat",
-              email: mergedCrm.email?.trim() || null,
-              phone: mergedCrm.phone?.trim() || null,
-              website: mergedCrm.website?.trim() || null,
-              message: parsed.data.message,
-            },
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              phone: true,
-              website: true,
-              purchaseEmailSentAt: true,
-            },
-          });
-        }
+      if (leadSnapshot) {
+        leadSnapshot = await tx.lead.update({
+          where: { id: leadSnapshot.id },
+          data: {
+            name: mergedCrm.name?.trim() || customerName || leadSnapshot.name,
+            email: mergedCrm.email?.trim() || customerEmail || leadSnapshot.email,
+            phone: mergedCrm.phone?.trim() || leadSnapshot.phone,
+            website: mergedCrm.website?.trim() || leadSnapshot.website,
+            message: parsed.data.message,
+          },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            website: true,
+            purchaseEmailSentAt: true,
+          },
+        });
+      } else {
+        leadSnapshot = await tx.lead.create({
+          data: {
+            clientId: resolvedClientId,
+            sessionId: parsed.data.sessionId,
+            name: mergedCrm.name?.trim() || customerName || "Contatto chat",
+            email: mergedCrm.email?.trim() || customerEmail || null,
+            phone: mergedCrm.phone?.trim() || null,
+            website: mergedCrm.website?.trim() || null,
+            message: parsed.data.message,
+          },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            website: true,
+            purchaseEmailSentAt: true,
+          },
+        });
       }
 
       const purchaseDetected = isPurchaseIntentMessage(

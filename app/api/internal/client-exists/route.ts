@@ -12,10 +12,15 @@ export async function GET(request: NextRequest) {
   if (clientId && isValidUuid(clientId)) {
     const client = await prismaAdmin.client.findUnique({
       where: { id: clientId },
-      select: { id: true, slug: true },
+      select: { id: true, slug: true, requireProfiling: true },
     });
 
-    return NextResponse.json({ exists: Boolean(client), clientId: client?.id ?? null, clientSlug: client?.slug ?? null });
+    return NextResponse.json({
+      exists: Boolean(client),
+      clientId: client?.id ?? null,
+      clientSlug: client?.slug ?? null,
+      requireProfiling: client?.requireProfiling ?? false,
+    });
   }
 
   if (!clientSlug || !SLUG_REGEX.test(clientSlug)) {
@@ -24,8 +29,13 @@ export async function GET(request: NextRequest) {
 
   const client = await prismaAdmin.client.findUnique({
     where: { slug: clientSlug },
-    select: { id: true, slug: true },
+    select: { id: true, slug: true, requireProfiling: true },
   });
 
-  return NextResponse.json({ exists: Boolean(client), clientId: client?.id ?? null, clientSlug: client?.slug ?? null });
+  return NextResponse.json({
+    exists: Boolean(client),
+    clientId: client?.id ?? null,
+    clientSlug: client?.slug ?? null,
+    requireProfiling: client?.requireProfiling ?? false,
+  });
 }

@@ -6,15 +6,7 @@ type Message = {
   id: string;
   role: "user" | "assistant";
   text: string;
-  kind?: "text" | "loading";
-};
-
-type ChatFile = {
-  id: string;
-  filename: string;
-  mimeType: string;
-  sizeBytes: number;
-  createdAt: string;
+  kind?: "text" | "loading" | "file";
 };
 
 type ChatWidgetProps = {
@@ -24,19 +16,37 @@ type ChatWidgetProps = {
   sessionId?: string;
 };
 
+type CustomerProfile = {
+  name: string;
+  email: string;
+};
+
 export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: ChatWidgetProps) {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [files, setFiles] = useState<ChatFile[]>([]);
   const [text, setText] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState("");
   const [loading, setLoading] = useState(false);
+  const [profileNameInput, setProfileNameInput] = useState("");
+  const [profileEmailInput, setProfileEmailInput] = useState("");
+  const [profileError, setProfileError] = useState("");
+  const [customerProfile, setCustomerProfile] = useState<CustomerProfile | null>(null);
+  const [profilingRequired, setProfilingRequired] = useState(false);
   const [assistantName, setAssistantName] = useState("Assistant");
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
-  const resolvedSessionId = useMemo(() => sessionId ?? crypto.randomUUID(), [sessionId]);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const tenantHeaderKey = clientId ? "x-client-id" : "x-client-slug";
   const tenantHeaderValue = (clientId ?? username ?? "").trim();
-  const tenantLabel = clientId ? `Ditta: ${clientId}` : username ? `Ditta: ${username}` : "Ditta non impostata";
+  const [resolvedSessionId, setResolvedSessionId] = useState(sessionId ?? "");
+  const sessionStorageKey = useMemo(
+    () => `easyvox-chat-session:${tenantHeaderKey}:${tenantHeaderValue || "demo"}`,
+    [tenantHeaderKey, tenantHeaderValue],
+  );
+  const profileStorageKey = useMemo(
+    () => `easyvox-chat-profile:${tenantHeaderKey}:${tenantHeaderValue || "demo"}`,
+    [tenantHeaderKey, tenantHeaderValue],
+  );
+  const tenantLabel = clientId ? `Ditta: ${clientId}` : username ? `Ditta: ${username}` : "Easyvox chat";
 
   function appendMessage(message: Omit<Message, "id">) {
     setMessages((prev) => [...prev, { ...message, id: crypto.randomUUID() }]);
@@ -46,56 +56,102 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
     setMessages((prev) => prev.filter((message) => message.kind !== "loading"));
   }
 
-  const tenantHeaders = useMemo(
-    () => ({
-      "content-type": "application/json",
-      [tenantHeaderKey]: tenantHeaderValue,
-    }),
-    [tenantHeaderKey, tenantHeaderValue],
-  );
+  const tenantHeaders = useMemo(() => {
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (tenantHeaderValue) headers[tenantHeaderKey] = tenantHeaderValue;
+    return headers;
+  }, [tenantHeaderKey, tenantHeaderValue]);
 
-  async function loadSessionFiles() {
-    if (!tenantHeaderValue) return;
-    const params = new URLSearchParams({ sessionId: resolvedSessionId });
-    const response = await fetch(`${apiBaseUrl}/api/files?${params.toString()}`, {
-      headers: {
-        [tenantHeaderKey]: tenantHeaderValue,
-      },
-    });
-    const data = (await response.json()) as { files?: ChatFile[]; error?: string };
-    if (!response.ok) {
-      throw new Error(data.error ?? "Errore caricamento file");
+  useEffect(() => {
+    if (sessionId) {
+      setResolvedSessionId(sessionId);
+      return;
     }
-    setFiles(data.files ?? []);
+    if (typeof window === "undefined") return;
+
+    const stored = window.localStorage.getItem(sessionStorageKey);
+    if (stored && stored.trim().length >= 3) {
+      setResolvedSessionId(stored);
+      return;
+    }
+
+    const generated = crypto.randomUUID();
+    window.localStorage.setItem(sessionStorageKey, generated);
+    setResolvedSessionId(generated);
+  }, [sessionId, sessionStorageKey]);
+
+  useEffect(() => {
+    if (!tenantHeaderValue) {
+      setProfilingRequired(false);
+      return;
+    }
+    const query = clientId
+      ? `clientId=${encodeURIComponent(clientId)}`
+      : `clientSlug=${encodeURIComponent(tenantHeaderValue)}`;
+    fetch(`${apiBaseUrl}/api/internal/client-exists?${query}`)
+      .then((response) => response.json())
+      .then((data: { requireProfiling?: boolean }) => {
+        setProfilingRequired(Boolean(data.requireProfiling));
+      })
+      .catch(() => {
+        setProfilingRequired(false);
+      });
+  }, [apiBaseUrl, clientId, tenantHeaderValue]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(profileStorageKey);
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored) as CustomerProfile;
+      if (parsed.name?.trim() && parsed.email?.trim()) {
+        setCustomerProfile({
+          name: parsed.name.trim(),
+          email: parsed.email.trim().toLowerCase(),
+        });
+      }
+    } catch {
+      // ignore local storage parse errors
+    }
+  }, [profileStorageKey]);
+
+  function submitProfile() {
+    const name = profileNameInput.trim();
+    const email = profileEmailInput.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!name || !emailRegex.test(email)) {
+      setProfileError("Inserisci nome completo ed email valida.");
+      return;
+    }
+    const profile = { name, email };
+    setCustomerProfile(profile);
+    setProfileNameInput("");
+    setProfileEmailInput("");
+    setProfileError("");
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(profileStorageKey, JSON.stringify(profile));
+    }
   }
 
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
-    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
-  }, [messages, loading]);
-
-  useEffect(() => {
-    loadSessionFiles().catch(() => {
-      setUploadStatus("Impossibile caricare allegati chat");
+    if (typeof window === "undefined") return;
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantHeaderValue, resolvedSessionId]);
+  }, [messages, loading]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     const message = text.trim();
-    if (!message || loading) return;
-    if (!tenantHeaderValue) {
-      appendMessage({
-        role: "assistant",
-        kind: "text",
-        text: "Ditta non impostata. Apri la demo con `?ditta=<slug>` oppure passa `username` al widget.",
-      });
-      return;
-    }
+    if (!message || loading || !resolvedSessionId) return;
+    if (profilingRequired && !customerProfile) return;
 
     setText("");
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 700px)").matches) {
+      textareaRef.current?.blur();
+    }
     appendMessage({ role: "user", kind: "text", text: message });
     appendMessage({ role: "assistant", kind: "loading", text: "" });
     setLoading(true);
@@ -107,6 +163,9 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
         body: JSON.stringify({
           sessionId: resolvedSessionId,
           message,
+          customerName: customerProfile?.name,
+          customerEmail: customerProfile?.email,
+          useEasyvoxChat: !tenantHeaderValue,
         }),
       });
 
@@ -139,13 +198,15 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
     const file = event.target.files?.[0];
     event.currentTarget.value = "";
     if (!file || uploading) return;
+    if (profilingRequired && !customerProfile) return;
+    if (!resolvedSessionId) {
+      return;
+    }
     if (!tenantHeaderValue) {
-      setUploadStatus("Ditta non impostata: impossibile allegare file");
       return;
     }
 
     setUploading(true);
-    setUploadStatus("Caricamento allegato...");
     try {
       const form = new FormData();
       form.append("file", file);
@@ -157,45 +218,21 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
         },
         body: form,
       });
-      const data = (await response.json()) as { file?: ChatFile; error?: string };
+      const data = (await response.json()) as { error?: string };
       if (!response.ok) {
         throw new Error(data.error ?? "Errore upload file");
       }
-      setFiles((prev) => [data.file as ChatFile, ...prev]);
-      setUploadStatus(`Allegato caricato: ${file.name}`);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : "Errore upload";
-      setUploadStatus(`Errore allegato: ${detail}`);
+      appendMessage({ role: "user", kind: "file", text: file.name });
+    } catch {
     } finally {
       setUploading(false);
     }
   }
 
-  async function removeFile(fileId: string) {
-    if (!tenantHeaderValue) return;
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/files/${fileId}`, {
-        method: "DELETE",
-        headers: {
-          [tenantHeaderKey]: tenantHeaderValue,
-        },
-      });
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(data?.error ?? "Errore eliminazione file");
-      }
-      setFiles((prev) => prev.filter((item) => item.id !== fileId));
-      setUploadStatus("Allegato rimosso");
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : "Errore eliminazione";
-      setUploadStatus(`Errore allegato: ${detail}`);
-    }
-  }
-
   return (
-    <section className="card" style={{ width: "100%", maxWidth: 420, padding: 16 }}>
+    <section className="card" style={{ width: "100%", padding: 16, paddingBottom: 230 }}>
       <header style={{ marginBottom: 12 }}>
-        <strong>EasyVox, Ai chat Hub Widget</strong>
+        <strong>EasyVox, Ai chat Hub</strong>
         <p className="mono" style={{ margin: "6px 0 0", color: "var(--muted)", fontSize: 12 }}>
           {tenantLabel}
         </p>
@@ -205,8 +242,6 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
         ref={messagesContainerRef}
         style={{
           minHeight: 220,
-          maxHeight: 320,
-          overflowY: "auto",
           display: "grid",
           gap: 8,
           marginBottom: 12,
@@ -216,13 +251,19 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
           <div
             key={message.id}
             style={{
-              padding: "10px 12px",
-              borderRadius: 12,
-              border: "1px solid var(--line)",
-              background: message.role === "user" ? "#fff0d7" : "#fff",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: message.role === "user" ? "flex-end" : "flex-start",
+              gap: 4,
             }}
           >
-            <div className="mono" style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>
+            <div
+              className="mono"
+              style={{
+                fontSize: 11,
+                color: "var(--muted)",
+              }}
+            >
               {message.role === "user" ? "tu" : assistantName}
             </div>
             {message.kind === "loading" ? (
@@ -233,7 +274,19 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
                 <span />
               </div>
             ) : (
-              <div style={{ whiteSpace: "pre-wrap", fontSize: 14 }}>{message.text}</div>
+              <div
+                style={{
+                  whiteSpace: "pre-wrap",
+                  fontSize: 14,
+                  maxWidth: "85%",
+                  padding: message.role === "user" ? "10px 12px" : 0,
+                  borderRadius: message.role === "user" ? 5 : 0,
+                  background: message.role === "user" ? "#797f88" : "transparent",
+                  color: message.role === "user" ? "#ffffff" : "inherit",
+                }}
+              >
+                {message.kind === "file" ? `[allegato] ${message.text}` : message.text}
+              </div>
             )}
           </div>
         ))}
@@ -244,122 +297,175 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
         )}
       </div>
 
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 10 }}>
-        <textarea
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          onKeyDown={onTextareaKeyDown}
-          placeholder="Scrivi qui..."
-          rows={3}
-          style={{
-            flex: 1,
-            resize: "vertical",
-            borderRadius: 10,
-            border: "1px solid var(--line)",
-            padding: 10,
-            fontSize: 14,
-          }}
-        />
-        <button
-          type="submit"
-          disabled={loading}
-          aria-label={loading ? "Invio in corso" : "Invia messaggio"}
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: "50%",
-            border: "1px solid var(--ink)",
-            background: "var(--ink)",
-            color: "white",
-            fontWeight: 700,
-            fontSize: 18,
-            lineHeight: 1,
-            display: "grid",
-            placeItems: "center",
-            padding: 0,
-            cursor: loading ? "not-allowed" : "pointer",
-            flexShrink: 0,
-            justifySelf: "end",
-          }}
-        >
-          {loading ? "…" : "↑"}
-        </button>
-      </form>
-
-      <section style={{ marginTop: 14, display: "grid", gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-          <strong style={{ fontSize: 13 }}>Allegati della chat</strong>
-          <label
+      <form
+        className="chat-input-form"
+        onSubmit={onSubmit}
+        style={{
+          position: "fixed",
+          left: "50%",
+          transform: "translateX(-50%)",
+          bottom: 100,
+          width: "min(760px, calc(100% - 32px))",
+          zIndex: 9999,
+          display: "grid",
+          gap: 10,
+        }}
+      >
+        {profilingRequired && !customerProfile && (
+          <div
             style={{
-              border: "1px solid var(--line)",
-              borderRadius: 8,
-              padding: "6px 10px",
-              fontSize: 12,
-              cursor: uploading ? "not-allowed" : "pointer",
-              opacity: uploading ? 0.65 : 1,
+              border: "1px solid #d4d7dc",
+              background: "#f8fafc",
+              borderRadius: 10,
+              padding: 12,
+              display: "grid",
+              gap: 8,
             }}
           >
-            {uploading ? "Carico..." : "Allega file"}
-            <input type="file" onChange={onSelectFile} disabled={uploading} style={{ display: "none" }} />
-          </label>
+            <strong style={{ fontSize: 14 }}>Prima di iniziare: inserisci nome ed email</strong>
+            <div style={{ display: "grid", gap: 8 }}>
+              <input
+                type="text"
+                value={profileNameInput}
+                onChange={(event) => setProfileNameInput(event.target.value)}
+                placeholder="Nome e cognome"
+                style={{ borderRadius: 8, border: "1px solid #d4d7dc", padding: "10px 12px", fontSize: 14 }}
+              />
+              <input
+                type="email"
+                value={profileEmailInput}
+                onChange={(event) => setProfileEmailInput(event.target.value)}
+                placeholder="email@dominio.com"
+                style={{ borderRadius: 8, border: "1px solid #d4d7dc", padding: "10px 12px", fontSize: 14 }}
+              />
+              {profileError ? (
+                <p style={{ margin: 0, color: "#b42318", fontSize: 12 }}>{profileError}</p>
+              ) : (
+                <p style={{ margin: 0, color: "var(--muted)", fontSize: 12 }}>
+                  Questi dati servono per personalizzare la chat e inviare conferme appuntamenti.
+                </p>
+              )}
+              <div>
+                <button
+                  type="button"
+                  onClick={submitProfile}
+                  style={{
+                    borderRadius: 8,
+                    border: "1px solid var(--ink)",
+                    background: "var(--ink)",
+                    color: "white",
+                    padding: "8px 12px",
+                    fontSize: 13,
+                    cursor: "pointer",
+                  }}
+                >
+                  Inizia chat
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        <div style={{ position: "relative", width: "100%" }}>
+          <textarea
+            className="chat-input-textarea"
+            ref={textareaRef}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={onTextareaKeyDown}
+            placeholder={
+              profilingRequired && !customerProfile
+                ? "Inserisci prima nome ed email"
+                : "Hei Ciao chiedimi quello che vuoi!!!"
+            }
+            rows={3}
+            disabled={profilingRequired && !customerProfile}
+            style={{
+              width: "100%",
+              resize: "vertical",
+              borderRadius: 10,
+              border: "none",
+              background: "#f1f4f8",
+              padding: "12px 96px 12px 12px",
+              fontSize: 14,
+              outline: "none",
+            }}
+          />
+          <input ref={fileInputRef} type="file" onChange={onSelectFile} disabled={uploading} style={{ display: "none" }} />
+          <div
+            style={{
+              position: "absolute",
+              right: 10,
+              bottom: 8,
+              display: "flex",
+              gap: 6,
+            }}
+          >
+            <button
+              className="chat-input-icon-button chat-input-tooltip"
+              data-tooltip="Allega file"
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Allega file"
+              disabled={uploading}
+              hidden={profilingRequired && !customerProfile}
+              style={{
+                borderRadius: "50%",
+                border: "1px solid var(--ink)",
+                background: "var(--ink)",
+                color: "#ffffff",
+                display: "grid",
+                placeItems: "center",
+                padding: 0,
+                cursor: uploading ? "not-allowed" : "pointer",
+              }}
+            >
+              <svg className="chat-input-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path
+                  d="M21.44 11.05L12.25 20.25a6 6 0 11-8.49-8.49l9.2-9.19a4 4 0 115.65 5.65l-9.2 9.2a2 2 0 11-2.83-2.83l8.49-8.48"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+            <button
+              className="chat-input-icon-button chat-input-tooltip"
+              data-tooltip={loading ? "Invio in corso" : "Invia messaggio"}
+              type="submit"
+              disabled={loading}
+              hidden={profilingRequired && !customerProfile}
+              aria-label={loading ? "Invio in corso" : "Invia messaggio"}
+              style={{
+                borderRadius: "50%",
+                border: "1px solid var(--ink)",
+                background: "var(--ink)",
+                color: "white",
+                display: "grid",
+                placeItems: "center",
+                padding: 0,
+                cursor: loading ? "not-allowed" : "pointer",
+              }}
+            >
+              {loading ? (
+                "…"
+              ) : (
+                <svg className="chat-input-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path
+                    d="M4 12L20 4l-4 16-4-6-8-2z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.9"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
-
-        {uploadStatus ? (
-          <p className="mono" style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>
-            {uploadStatus}
-          </p>
-        ) : null}
-
-        <div style={{ display: "grid", gap: 6 }}>
-          {files.length === 0 ? (
-            <p className="mono" style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>
-              Nessun file allegato a questa chat.
-            </p>
-          ) : (
-            files.map((file) => (
-              <article
-                key={file.id}
-                style={{
-                  border: "1px solid var(--line)",
-                  borderRadius: 10,
-                  padding: "8px 10px",
-                  display: "grid",
-                  gap: 5,
-                }}
-              >
-                <div style={{ fontSize: 13, fontWeight: 600, wordBreak: "break-all" }}>{file.filename}</div>
-                <div className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>
-                  {(file.sizeBytes / 1024).toFixed(1)} KB
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <a
-                    href={`${apiBaseUrl}/api/files/${file.id}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ fontSize: 12, color: "var(--accent)" }}
-                  >
-                    Apri
-                  </a>
-                  <button
-                    type="button"
-                    onClick={() => removeFile(file.id)}
-                    style={{
-                      fontSize: 12,
-                      border: "none",
-                      padding: 0,
-                      background: "transparent",
-                      color: "#b42318",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Rimuovi
-                  </button>
-                </div>
-              </article>
-            ))
-          )}
-        </div>
-      </section>
+      </form>
     </section>
   );
 }

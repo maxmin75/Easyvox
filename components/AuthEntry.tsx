@@ -1,24 +1,64 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getProviders, signIn } from "next-auth/react";
 
 type Mode = "login" | "register";
 
-export function AuthEntry() {
+type AuthEntryProps = {
+  modeLocked?: Mode;
+  standalone?: boolean;
+};
+
+type SocialProviderId = "google" | "twitter";
+
+const SOCIAL_PROVIDER_LABELS: Record<SocialProviderId, string> = {
+  google: "Google",
+  twitter: "X.com",
+};
+
+export function AuthEntry({ modeLocked, standalone = false }: AuthEntryProps) {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("login");
+  const [mode, setMode] = useState<Mode>(modeLocked ?? "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
+  const [socialProviders, setSocialProviders] = useState<SocialProviderId[]>([]);
+  const currentMode = modeLocked ?? mode;
+
+  useEffect(() => {
+    if (modeLocked) return;
+
+    let isMounted = true;
+    (async () => {
+      try {
+        const providers = await getProviders();
+        const enabled = (["google", "twitter"] as const).filter((providerId) =>
+          Boolean(providers?.[providerId]),
+        );
+        if (isMounted) {
+          setSocialProviders(enabled);
+        }
+      } catch {
+        if (isMounted) {
+          setSocialProviders([]);
+        }
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [modeLocked]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setLoading(true);
 
     try {
-      const response = await fetch(mode === "login" ? "/api/auth/login" : "/api/auth/register", {
+      const response = await fetch(currentMode === "login" ? "/api/auth/login" : "/api/auth/register", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -31,13 +71,109 @@ export function AuthEntry() {
       }
 
       setStatus("Accesso effettuato");
-      router.push("/admin");
+      router.push("/post-login");
       router.refresh();
     } catch {
       setStatus("Errore di rete");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function onSocialLogin(provider: SocialProviderId) {
+    if (modeLocked) return;
+    if (!socialProviders.includes(provider)) {
+      setStatus("Provider social non disponibile. Configura le variabili OAuth in Vercel.");
+      return;
+    }
+    setStatus("");
+    try {
+      await signIn(provider, { callbackUrl: "/post-login" });
+    } catch {
+      setStatus("Errore durante il login social. Controlla configurazione OAuth e callback URL.");
+    }
+  }
+
+  const authPanel = (
+    <section className="landing-block auth-panel" aria-label="Accesso account">
+      <div className="auth-panel-head">
+        <h2>Accedi alla dashboard</h2>
+        <p className="mono">{modeLocked ? "Inserisci le credenziali per continuare." : "Entra oppure crea un account per iniziare."}</p>
+      </div>
+
+      {!modeLocked ? (
+        <div className="auth-toggle" role="tablist" aria-label="Modalita accesso">
+          <button type="button" onClick={() => setMode("login")} className={mode === "login" ? "is-active" : ""}>
+            Login
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("register")}
+            className={mode === "register" ? "is-active" : ""}
+          >
+            Register
+          </button>
+        </div>
+      ) : null}
+
+      <form onSubmit={onSubmit} className="auth-form">
+        <label>
+          Email
+          <input
+            type="email"
+            required
+            placeholder="name@company.com"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+        </label>
+        <label>
+          Password
+          <input
+            type="password"
+            required
+            minLength={8}
+            placeholder="Minimum 8 characters"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </label>
+        <button type="submit" disabled={loading} className="auth-submit">
+          {loading ? "Attendere..." : currentMode === "login" ? "Entra in dashboard" : "Crea account"}
+        </button>
+      </form>
+
+      {!modeLocked ? (
+        <div className="auth-social-wrap" aria-label="Accesso social">
+          <p className="mono auth-social-label">oppure continua con</p>
+          <div className="auth-social-grid">
+            {socialProviders.map((providerId) => (
+              <button
+                key={providerId}
+                type="button"
+                className="auth-social-button"
+                onClick={() => onSocialLogin(providerId)}
+              >
+                {SOCIAL_PROVIDER_LABELS[providerId]}
+              </button>
+            ))}
+          </div>
+          {socialProviders.length === 0 ? (
+            <p className="mono auth-status">Login social non disponibile: configura i provider OAuth in produzione.</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <p className="mono auth-status">{status || "Dopo l’autenticazione sarai reindirizzato in area Admin."}</p>
+    </section>
+  );
+
+  if (standalone) {
+    return (
+      <main className="container auth-standalone-page">
+        {authPanel}
+      </main>
+    );
   }
 
   return (
@@ -96,54 +232,7 @@ export function AuthEntry() {
           </article>
         </div>
 
-        <section className="landing-block auth-panel" aria-label="Accesso account">
-          <div className="auth-panel-head">
-            <h2>Accedi alla dashboard</h2>
-            <p className="mono">Entra oppure crea un account per iniziare.</p>
-          </div>
-
-          <div className="auth-toggle" role="tablist" aria-label="Modalita accesso">
-            <button type="button" onClick={() => setMode("login")} className={mode === "login" ? "is-active" : ""}>
-              Login
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("register")}
-              className={mode === "register" ? "is-active" : ""}
-            >
-              Register
-            </button>
-          </div>
-
-          <form onSubmit={onSubmit} className="auth-form">
-            <label>
-              Email
-              <input
-                type="email"
-                required
-                placeholder="name@company.com"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-              />
-            </label>
-            <label>
-              Password
-              <input
-                type="password"
-                required
-                minLength={8}
-                placeholder="Minimum 8 characters"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
-            </label>
-            <button type="submit" disabled={loading} className="auth-submit">
-              {loading ? "Attendere..." : mode === "login" ? "Entra in dashboard" : "Crea account"}
-            </button>
-          </form>
-
-          <p className="mono auth-status">{status || "Dopo l’autenticazione sarai reindirizzato in area Admin."}</p>
-        </section>
+        {authPanel}
 
         <div className="landing-block landing-proof">
           <p className="landing-proof-title">Una UX semplice per team operativi, customer care e product manager.</p>

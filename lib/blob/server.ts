@@ -2,7 +2,8 @@ import { del, get, put } from "@vercel/blob";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-const LOCAL_STORAGE_ROOT = path.join(process.cwd(), ".local-blob");
+const LOCAL_STORAGE_ROOT =
+  process.env.VERCEL === "1" ? path.join("/tmp", ".local-blob") : path.join(process.cwd(), ".local-blob");
 
 type BlobUploadResult = {
   url: string;

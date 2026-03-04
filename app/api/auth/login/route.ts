@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prismaAdmin } from "@/lib/prisma-admin";
-import { applySessionCookie, createAuthSession, verifyPassword } from "@/lib/auth";
+import { applySessionCookie, createAuthSession, hashPassword, verifyPassword } from "@/lib/auth";
+import { EASYVOX_ADMIN_EMAIL, EASYVOX_ADMIN_PASSWORD } from "@/lib/admin/access";
 
 export const runtime = "nodejs";
 
@@ -17,13 +18,31 @@ export async function POST(request: NextRequest) {
   }
 
   const email = parsed.data.email.trim().toLowerCase();
-  const user = await prismaAdmin.user.findUnique({
-    where: { email },
+  if (email !== EASYVOX_ADMIN_EMAIL || parsed.data.password !== EASYVOX_ADMIN_PASSWORD) {
+    return NextResponse.json({ error: "Credenziali non valide" }, { status: 401 });
+  }
+
+  let user = await prismaAdmin.user.findUnique({
+    where: { email: EASYVOX_ADMIN_EMAIL },
     select: { id: true, email: true, passwordHash: true, createdAt: true },
   });
 
-  if (!user || !verifyPassword(parsed.data.password, user.passwordHash)) {
-    return NextResponse.json({ error: "Credenziali non valide" }, { status: 401 });
+  if (!user) {
+    user = await prismaAdmin.user.create({
+      data: {
+        email: EASYVOX_ADMIN_EMAIL,
+        passwordHash: hashPassword(EASYVOX_ADMIN_PASSWORD),
+      },
+      select: { id: true, email: true, passwordHash: true, createdAt: true },
+    });
+  }
+
+  if (!verifyPassword(EASYVOX_ADMIN_PASSWORD, user.passwordHash)) {
+    user = await prismaAdmin.user.update({
+      where: { id: user.id },
+      data: { passwordHash: hashPassword(EASYVOX_ADMIN_PASSWORD) },
+      select: { id: true, email: true, passwordHash: true, createdAt: true },
+    });
   }
 
   const token = await createAuthSession(user.id);

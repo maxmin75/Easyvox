@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 type Client = {
   id: string;
@@ -13,6 +14,7 @@ type MetricsResponse = {
   totals: {
     conversations: number;
     leads: number;
+    appointments: number;
     feedback: number;
     documents: number;
     chunks: number;
@@ -21,13 +23,22 @@ type MetricsResponse = {
     id: string;
     name: string;
     slug: string;
+    canTakeAppointments: boolean;
     totals: {
       conversations: number;
       leads: number;
+      appointments: number;
       feedback: number;
       documents: number;
       chunks: number;
     };
+    latestAppointments: Array<{
+      id: string;
+      fullName: string;
+      email: string | null;
+      phone: string | null;
+      scheduledFor: string;
+    }>;
   }>;
   error?: string;
 };
@@ -35,6 +46,7 @@ type MetricsResponse = {
 const EMPTY_METRICS: MetricsResponse["totals"] = {
   conversations: 0,
   leads: 0,
+  appointments: 0,
   feedback: 0,
   documents: 0,
   chunks: 0,
@@ -123,6 +135,7 @@ export default function AdminMetricsPage() {
   const cards = [
     { label: "Conversazioni", value: totals.conversations },
     { label: "Lead", value: totals.leads },
+    { label: "Appuntamenti", value: totals.appointments },
     { label: "Tiket", value: totals.feedback },
     { label: "Documenti", value: totals.documents },
     { label: "Mail inviate", value: totals.chunks },
@@ -242,8 +255,44 @@ export default function AdminMetricsPage() {
                   {client.slug}
                 </span>
                 <div className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>
-                  Conversazioni: {client.totals.conversations} | Lead: {client.totals.leads} | Ticket:{" "}
+                  Conversazioni: {client.totals.conversations} | Lead: {client.totals.leads} | Appuntamenti:{" "}
+                  {client.totals.appointments} ({client.canTakeAppointments ? "abilitati" : "disabilitati"}) | Ticket:{" "}
                   {client.totals.feedback} | Documenti: {client.totals.documents} | Chunks: {client.totals.chunks}
+                </div>
+                {client.canTakeAppointments && (
+                  <div className="mono" style={{ fontSize: 12, color: "var(--muted)", display: "grid", gap: 3 }}>
+                    {client.latestAppointments.length === 0 ? (
+                      <span>Nessun appuntamento registrato.</span>
+                    ) : (
+                      client.latestAppointments.map((appointment) => (
+                        <span key={appointment.id}>
+                          - {appointment.fullName} |{" "}
+                          {new Date(appointment.scheduledFor).toLocaleString("it-IT", {
+                            dateStyle: "short",
+                            timeStyle: "short",
+                          })}{" "}
+                          | {appointment.email ?? appointment.phone ?? "-"}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                )}
+                <div>
+                  <Link
+                    href={`/admin/appointments?clientId=${encodeURIComponent(client.id)}`}
+                    style={{
+                      display: "inline-block",
+                      marginTop: 4,
+                      borderRadius: 8,
+                      border: "1px solid var(--line)",
+                      padding: "6px 10px",
+                      fontSize: 12,
+                      color: "var(--ink)",
+                      textDecoration: "none",
+                    }}
+                  >
+                    Apri appuntamenti
+                  </Link>
                 </div>
               </article>
             ))}

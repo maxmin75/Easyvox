@@ -18,13 +18,26 @@ export async function GET(request: NextRequest) {
       id: true,
       name: true,
       slug: true,
+      canTakeAppointments: true,
       _count: {
         select: {
           conversations: true,
           leads: true,
+          appointments: true,
           feedback: true,
           documents: true,
           chunks: true,
+        },
+      },
+      appointments: {
+        orderBy: { scheduledFor: "asc" },
+        take: 5,
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          phone: true,
+          scheduledFor: true,
         },
       },
     },
@@ -40,6 +53,7 @@ export async function GET(request: NextRequest) {
     (acc, client) => {
       acc.conversations += client._count.conversations;
       acc.leads += client._count.leads;
+      acc.appointments += client._count.appointments;
       acc.feedback += client._count.feedback;
       acc.documents += client._count.documents;
       acc.chunks += client._count.chunks;
@@ -48,6 +62,7 @@ export async function GET(request: NextRequest) {
     {
       conversations: 0,
       leads: 0,
+      appointments: 0,
       feedback: 0,
       documents: 0,
       chunks: 0,
@@ -61,13 +76,16 @@ export async function GET(request: NextRequest) {
       id: client.id,
       name: client.name,
       slug: client.slug,
+      canTakeAppointments: client.canTakeAppointments,
       totals: {
         conversations: client._count.conversations,
         leads: client._count.leads,
+        appointments: client._count.appointments,
         feedback: client._count.feedback,
         documents: client._count.documents,
         chunks: client._count.chunks,
       },
+      latestAppointments: client.appointments,
     })),
   });
 }
