@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   if (clientId && isValidUuid(clientId)) {
     const client = await prismaAdmin.client.findUnique({
       where: { id: clientId },
-      select: { id: true, slug: true, requireProfiling: true },
+      select: { id: true, slug: true, requireProfiling: true, requireUserAuthForChat: true },
     });
 
     return NextResponse.json({
@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
       clientId: client?.id ?? null,
       clientSlug: client?.slug ?? null,
       requireProfiling: client?.requireProfiling ?? false,
+      requireUserAuthForChat: client?.requireUserAuthForChat ?? false,
     });
   }
 
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
 
   const client = await prismaAdmin.client.findUnique({
     where: { slug: clientSlug },
-    select: { id: true, slug: true, requireProfiling: true },
+    select: { id: true, slug: true, requireProfiling: true, requireUserAuthForChat: true },
   });
 
   return NextResponse.json({
@@ -37,5 +38,6 @@ export async function GET(request: NextRequest) {
     clientId: client?.id ?? null,
     clientSlug: client?.slug ?? null,
     requireProfiling: client?.requireProfiling ?? false,
+    requireUserAuthForChat: client?.requireUserAuthForChat ?? false,
   });
 }

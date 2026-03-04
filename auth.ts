@@ -57,13 +57,31 @@ async function ensureDefaultWorkspace(userId: string, email: string | null | und
     workspaceSlug = `${baseSlug}-workspace-${suffix}`;
   }
 
-  await prismaAdmin.client.create({
+  const client = await prismaAdmin.client.create({
     data: {
       ownerId: userId,
       name: "Workspace",
       slug: workspaceSlug,
       assistantName: "Assistant",
       systemPrompt: "Rispondi in modo chiaro e utile basandoti sui documenti caricati.",
+    },
+    select: { id: true },
+  });
+
+  await prismaAdmin.clientUser.upsert({
+    where: {
+      clientId_userId: {
+        clientId: client.id,
+        userId,
+      },
+    },
+    create: {
+      clientId: client.id,
+      userId,
+      role: "OWNER",
+    },
+    update: {
+      role: "OWNER",
     },
   });
 }

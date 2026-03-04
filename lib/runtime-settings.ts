@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { prismaAdmin } from "@/lib/prisma-admin";
 import {
   DEFAULT_CHAT_MODEL,
   DEFAULT_EMBEDDING_MODEL,
@@ -64,6 +65,68 @@ export async function getRuntimeSettings(): Promise<RuntimeSettings> {
     appBaseUrl: process.env.APP_BASE_URL ?? setting?.appBaseUrl ?? null,
     blobConfigured: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
   };
+}
+
+type RuntimeSettingsOverrides = {
+  provider?: AiProvider | null;
+  openaiApiKey?: string | null;
+  openaiChatModel?: string | null;
+  openaiEmbeddingModel?: string | null;
+  ollamaBaseUrl?: string | null;
+  ollamaChatModel?: string | null;
+  ollamaEmbeddingModel?: string | null;
+};
+
+function mergeRuntimeSettings(base: RuntimeSettings, overrides: RuntimeSettingsOverrides): RuntimeSettings {
+  const provider = normalizeProvider(overrides.provider) ?? base.provider;
+  return {
+    ...base,
+    provider,
+    openaiApiKey: overrides.openaiApiKey ?? base.openaiApiKey,
+    openaiChatModel: overrides.openaiChatModel ?? base.openaiChatModel,
+    openaiEmbeddingModel: overrides.openaiEmbeddingModel ?? base.openaiEmbeddingModel,
+    ollamaBaseUrl: overrides.ollamaBaseUrl ?? base.ollamaBaseUrl,
+    ollamaChatModel: overrides.ollamaChatModel ?? base.ollamaChatModel,
+    ollamaEmbeddingModel: overrides.ollamaEmbeddingModel ?? base.ollamaEmbeddingModel,
+  };
+}
+
+export async function getRuntimeSettingsForUser(
+  clientId: string | null | undefined,
+  userId: string | null | undefined,
+): Promise<RuntimeSettings> {
+  const base = await getRuntimeSettings();
+  if (!clientId || !userId) return base;
+
+  const pref = await prismaAdmin.userAiSetting.findUnique({
+    where: {
+      clientId_userId: {
+        clientId,
+        userId,
+      },
+    },
+    select: {
+      aiProvider: true,
+      openaiApiKey: true,
+      openaiChatModel: true,
+      openaiEmbeddingModel: true,
+      ollamaBaseUrl: true,
+      ollamaChatModel: true,
+      ollamaEmbeddingModel: true,
+    },
+  });
+
+  if (!pref) return base;
+
+  return mergeRuntimeSettings(base, {
+    provider: normalizeProvider(pref.aiProvider),
+    openaiApiKey: pref.openaiApiKey,
+    openaiChatModel: pref.openaiChatModel,
+    openaiEmbeddingModel: pref.openaiEmbeddingModel,
+    ollamaBaseUrl: pref.ollamaBaseUrl,
+    ollamaChatModel: pref.ollamaChatModel,
+    ollamaEmbeddingModel: pref.ollamaEmbeddingModel,
+  });
 }
 
 export function envOverridesRuntimeSettings() {

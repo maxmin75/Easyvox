@@ -18,31 +18,43 @@ export async function POST(request: NextRequest) {
   }
 
   const email = parsed.data.email.trim().toLowerCase();
-  if (email !== EASYVOX_ADMIN_EMAIL || parsed.data.password !== EASYVOX_ADMIN_PASSWORD) {
-    return NextResponse.json({ error: "Credenziali non valide" }, { status: 401 });
-  }
+  let user: { id: string; email: string; passwordHash: string | null; createdAt: Date } | null = null;
 
-  let user = await prismaAdmin.user.findUnique({
-    where: { email: EASYVOX_ADMIN_EMAIL },
-    select: { id: true, email: true, passwordHash: true, createdAt: true },
-  });
+  if (email === EASYVOX_ADMIN_EMAIL) {
+    if (parsed.data.password !== EASYVOX_ADMIN_PASSWORD) {
+      return NextResponse.json({ error: "Credenziali non valide" }, { status: 401 });
+    }
 
-  if (!user) {
-    user = await prismaAdmin.user.create({
-      data: {
-        email: EASYVOX_ADMIN_EMAIL,
-        passwordHash: hashPassword(EASYVOX_ADMIN_PASSWORD),
-      },
+    user = await prismaAdmin.user.findUnique({
+      where: { email: EASYVOX_ADMIN_EMAIL },
       select: { id: true, email: true, passwordHash: true, createdAt: true },
     });
-  }
 
-  if (!verifyPassword(EASYVOX_ADMIN_PASSWORD, user.passwordHash)) {
-    user = await prismaAdmin.user.update({
-      where: { id: user.id },
-      data: { passwordHash: hashPassword(EASYVOX_ADMIN_PASSWORD) },
+    if (!user) {
+      user = await prismaAdmin.user.create({
+        data: {
+          email: EASYVOX_ADMIN_EMAIL,
+          passwordHash: hashPassword(EASYVOX_ADMIN_PASSWORD),
+        },
+        select: { id: true, email: true, passwordHash: true, createdAt: true },
+      });
+    }
+
+    if (!verifyPassword(EASYVOX_ADMIN_PASSWORD, user.passwordHash)) {
+      user = await prismaAdmin.user.update({
+        where: { id: user.id },
+        data: { passwordHash: hashPassword(EASYVOX_ADMIN_PASSWORD) },
+        select: { id: true, email: true, passwordHash: true, createdAt: true },
+      });
+    }
+  } else {
+    user = await prismaAdmin.user.findUnique({
+      where: { email },
       select: { id: true, email: true, passwordHash: true, createdAt: true },
     });
+    if (!user || !verifyPassword(parsed.data.password, user.passwordHash)) {
+      return NextResponse.json({ error: "Credenziali non valide" }, { status: 401 });
+    }
   }
 
   const token = await createAuthSession(user.id);

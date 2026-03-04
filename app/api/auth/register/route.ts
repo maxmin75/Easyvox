@@ -44,13 +44,31 @@ export async function POST(request: NextRequest) {
     workspaceSlug = `${baseSlug}-workspace-${suffix}`;
   }
 
-  await prismaAdmin.client.create({
+  const client = await prismaAdmin.client.create({
     data: {
       ownerId: user.id,
       name: "Workspace",
       slug: workspaceSlug,
       assistantName: "Assistant",
       systemPrompt: "Rispondi in modo chiaro e utile basandoti sui documenti caricati.",
+    },
+    select: { id: true },
+  });
+
+  await prismaAdmin.clientUser.upsert({
+    where: {
+      clientId_userId: {
+        clientId: client.id,
+        userId: user.id,
+      },
+    },
+    create: {
+      clientId: client.id,
+      userId: user.id,
+      role: "OWNER",
+    },
+    update: {
+      role: "OWNER",
     },
   });
 

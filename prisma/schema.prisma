@@ -7,25 +7,33 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum ClientUserRole {
+  OWNER
+  MEMBER
+}
+
 model Client {
-  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  ownerId      String?    @map("owner_id") @db.Uuid
-  name         String
-  slug         String     @unique
-  assistantName String?   @map("assistant_name")
-  canTakeAppointments Boolean @default(true) @map("can_take_appointments")
-  requireProfiling Boolean @default(false) @map("require_profiling")
-  systemPrompt String?    @map("system_prompt")
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
-  owner        User?      @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  documents    Document[]
-  chunks       Chunk[]
+  id                  String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerId             String?     @map("owner_id") @db.Uuid
+  name                String
+  slug                String      @unique
+  assistantName       String?     @map("assistant_name")
+  canTakeAppointments Boolean     @default(true) @map("can_take_appointments")
+  requireProfiling    Boolean     @default(false) @map("require_profiling")
+  requireUserAuthForChat Boolean  @default(false) @map("require_user_auth_for_chat")
+  systemPrompt        String?     @map("system_prompt")
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+  owner               User?       @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  members             ClientUser[]
+  userAiSettings      UserAiSetting[]
+  documents           Document[]
+  chunks              Chunk[]
   conversations Conversation[]
-  leads        Lead[]
-  appointments Appointment[]
-  feedback     Feedback[]
-  fileAssets   FileAsset[]
+  leads             Lead[]
+  appointments      Appointment[]
+  feedback          Feedback[]
+  fileAssets        FileAsset[]
 
   @@index([ownerId])
   @@map("clients")
@@ -40,12 +48,54 @@ model User {
   passwordHash String?       @map("password_hash")
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
-  sessions     UserSession[]
-  authAccounts Account[]
-  authSessions Session[]
-  clients      Client[]
+  sessions       UserSession[]
+  authAccounts   Account[]
+  authSessions   Session[]
+  clients        Client[]
+  memberships    ClientUser[]
+  aiSettings     UserAiSetting[]
 
   @@map("users")
+}
+
+model ClientUser {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId      String         @map("client_id") @db.Uuid
+  userId        String         @map("user_id") @db.Uuid
+  role          ClientUserRole @default(MEMBER)
+  lastChatLoginAt DateTime?    @map("last_chat_login_at")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, userId])
+  @@index([userId])
+  @@index([clientId, role])
+  @@map("client_users")
+}
+
+model UserAiSetting {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId             String   @map("client_id") @db.Uuid
+  userId               String   @map("user_id") @db.Uuid
+  aiProvider           String?  @map("ai_provider")
+  openaiApiKey         String?  @map("openai_api_key")
+  openaiChatModel      String?  @map("openai_chat_model")
+  openaiEmbeddingModel String?  @map("openai_embedding_model")
+  ollamaBaseUrl        String?  @map("ollama_base_url")
+  ollamaChatModel      String?  @map("ollama_chat_model")
+  ollamaEmbeddingModel String?  @map("ollama_embedding_model")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, userId])
+  @@index([userId])
+  @@map("user_ai_settings")
 }
 
 model UserSession {

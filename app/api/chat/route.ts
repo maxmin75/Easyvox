@@ -4,9 +4,10 @@ import { withTenant } from "@/lib/db/tenant";
 import { jsonError } from "@/lib/api/errors";
 import { prisma } from "@/lib/prisma";
 import { getAuthUserFromRequest } from "@/lib/auth";
-import { getRuntimeSettings } from "@/lib/runtime-settings";
+import { getRuntimeSettings, getRuntimeSettingsForUser } from "@/lib/runtime-settings";
 import { createEmbeddingWithProvider, completeChatWithProvider } from "@/lib/ai/provider";
 import { retrieveTopChunks } from "@/lib/rag/retrieval";
+import { getTenantAccess, touchTenantMembership } from "@/lib/tenant-users";
 import {
   getPurchaseEmailRuntimeSettings,
   isPurchaseIntentMessage,
@@ -242,7 +243,7 @@ function getMissingAppointmentFields(data: z.infer<typeof appointmentIntentSchem
 }
 
 export async function POST(request: NextRequest) {
-  const runtimeSettings = await getRuntimeSettings();
+  const systemRuntimeSettings = await getRuntimeSettings();
   const purchaseEmailSettings = await getPurchaseEmailRuntimeSettings();
   const authUser = await getAuthUserFromRequest(request);
   const parsed = schema.safeParse(await request.json().catch(() => null));
@@ -285,7 +286,7 @@ export async function POST(request: NextRequest) {
 Rivolgiti sempre al cliente per nome quando appropriato.${easyvoxCustomerLine}`,
           userPrompt: parsed.data.message,
         },
-        runtimeSettings,
+        systemRuntimeSettings,
       );
 
       return NextResponse.json({
@@ -293,7 +294,7 @@ Rivolgiti sempre al cliente per nome quando appropriato.${easyvoxCustomerLine}`,
         assistantName: "Easyvox chat",
         usageEstimate: completion.usageEstimate,
         sources: [],
-        provider: runtimeSettings.provider,
+        provider: systemRuntimeSettings.provider,
         mode: "easyvox-chat",
         appointmentCreated: false,
         appointmentId: null,
@@ -304,30 +305,43 @@ Rivolgiti sempre al cliente per nome quando appropriato.${easyvoxCustomerLine}`,
     }
   }
 
-  if (authUser) {
-    const owned = await prisma.client.findFirst({
-      where: { id: clientId, ownerId: authUser.id },
-      select: { id: true },
-    });
-    if (!owned) return jsonError("Agente non trovato", 404);
-  }
-
   const client = await prisma.client.findUnique({
     where: { id: clientId },
     select: {
       id: true,
       name: true,
+      ownerId: true,
       assistantName: true,
       systemPrompt: true,
       canTakeAppointments: true,
       requireProfiling: true,
+      requireUserAuthForChat: true,
     },
   });
 
   if (!client) return jsonError("Tenant non trovato", 404);
+  const access = authUser ? await getTenantAccess(client.id, authUser.id) : null;
+  const isOwner = access?.isOwner ?? false;
+  const hasTenantAccess = access?.hasAccess ?? false;
+
+  if (client.requireUserAuthForChat && !authUser) {
+    return jsonError("Accesso richiesto: effettua login con email e password.", 401);
+  }
+  if (client.requireUserAuthForChat && !hasTenantAccess) {
+    return jsonError("Non autorizzato per questo tenant.", 403);
+  }
+
+  if (authUser && hasTenantAccess) {
+    await touchTenantMembership(client.id, authUser.id, isOwner);
+  }
+
   if (client.requireProfiling && (!payloadCustomerName || !payloadCustomerEmail)) {
     return jsonError("Profilazione obbligatoria: nome ed email sono richiesti prima di chattare.", 400);
   }
+
+  const runtimeSettings = hasTenantAccess
+    ? await getRuntimeSettingsForUser(client.id, authUser?.id ?? null)
+    : systemRuntimeSettings;
 
   let embedding: number[];
   try {

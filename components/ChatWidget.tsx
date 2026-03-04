@@ -31,6 +31,12 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
   const [profileError, setProfileError] = useState("");
   const [customerProfile, setCustomerProfile] = useState<CustomerProfile | null>(null);
   const [profilingRequired, setProfilingRequired] = useState(false);
+  const [authRequired, setAuthRequired] = useState(false);
+  const [chatUserEmail, setChatUserEmail] = useState("");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loggingIn, setLoggingIn] = useState(false);
   const [assistantName, setAssistantName] = useState("Assistant");
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -90,13 +96,33 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
       : `clientSlug=${encodeURIComponent(tenantHeaderValue)}`;
     fetch(`${apiBaseUrl}/api/internal/client-exists?${query}`)
       .then((response) => response.json())
-      .then((data: { requireProfiling?: boolean }) => {
+      .then((data: { requireProfiling?: boolean; requireUserAuthForChat?: boolean }) => {
         setProfilingRequired(Boolean(data.requireProfiling));
+        setAuthRequired(Boolean(data.requireUserAuthForChat));
       })
       .catch(() => {
         setProfilingRequired(false);
+        setAuthRequired(false);
       });
   }, [apiBaseUrl, clientId, tenantHeaderValue]);
+
+  useEffect(() => {
+    if (!tenantHeaderValue) {
+      setChatUserEmail("");
+      return;
+    }
+
+    const headers: Record<string, string> = {};
+    headers[tenantHeaderKey] = tenantHeaderValue;
+    fetch(`${apiBaseUrl}/api/chat-auth/me`, { headers })
+      .then((response) => response.json())
+      .then((data: { user?: { email?: string } | null }) => {
+        setChatUserEmail(data.user?.email?.trim().toLowerCase() ?? "");
+      })
+      .catch(() => {
+        setChatUserEmail("");
+      });
+  }, [apiBaseUrl, tenantHeaderKey, tenantHeaderValue]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -147,6 +173,7 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
     const message = text.trim();
     if (!message || loading || !resolvedSessionId) return;
     if (profilingRequired && !customerProfile) return;
+    if (authRequired && !chatUserEmail) return;
 
     setText("");
     if (typeof window !== "undefined" && window.matchMedia("(max-width: 700px)").matches) {
@@ -199,6 +226,7 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
     event.currentTarget.value = "";
     if (!file || uploading) return;
     if (profilingRequired && !customerProfile) return;
+    if (authRequired && !chatUserEmail) return;
     if (!resolvedSessionId) {
       return;
     }
@@ -229,6 +257,46 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
     }
   }
 
+  async function submitChatLogin() {
+    if (!tenantHeaderValue) return;
+    const email = loginEmail.trim().toLowerCase();
+    if (!email || !loginPassword) {
+      setLoginError("Inserisci email e password.");
+      return;
+    }
+
+    setLoggingIn(true);
+    setLoginError("");
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/chat-auth/login`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          [tenantHeaderKey]: tenantHeaderValue,
+        },
+        body: JSON.stringify({ email, password: loginPassword }),
+      });
+      const data = (await response.json()) as { error?: string; user?: { email?: string } };
+      if (!response.ok) {
+        setLoginError(data.error ?? "Login fallito");
+        return;
+      }
+      setChatUserEmail(data.user?.email?.trim().toLowerCase() ?? email);
+      setLoginEmail("");
+      setLoginPassword("");
+      setLoginError("");
+    } catch {
+      setLoginError("Errore di rete");
+    } finally {
+      setLoggingIn(false);
+    }
+  }
+
+  async function logoutChatUser() {
+    await fetch(`${apiBaseUrl}/api/chat-auth/logout`, { method: "POST" }).catch(() => null);
+    setChatUserEmail("");
+  }
+
   return (
     <section className="card" style={{ width: "100%", padding: 16, paddingBottom: 230 }}>
       <header style={{ marginBottom: 12 }}>
@@ -236,6 +304,74 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
         <p className="mono" style={{ margin: "6px 0 0", color: "var(--muted)", fontSize: 12 }}>
           {tenantLabel}
         </p>
+        {authRequired ? (
+          chatUserEmail ? (
+            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <p className="mono" style={{ margin: 0, color: "var(--muted)", fontSize: 12 }}>
+                Utente chat: {chatUserEmail}
+              </p>
+              <button
+                type="button"
+                onClick={logoutChatUser}
+                style={{
+                  borderRadius: 8,
+                  border: "1px solid var(--line)",
+                  background: "white",
+                  padding: "4px 8px",
+                  fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                Logout
+              </button>
+            </div>
+          ) : (
+            <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+              <strong style={{ fontSize: 13 }}>Accesso richiesto</strong>
+              <div style={{ display: "grid", gap: 8 }}>
+                <input
+                  type="email"
+                  placeholder="email"
+                  value={loginEmail}
+                  onChange={(event) => setLoginEmail(event.target.value)}
+                  style={{ borderRadius: 8, border: "1px solid #d4d7dc", padding: "8px 10px", fontSize: 13 }}
+                />
+                <input
+                  type="password"
+                  placeholder="password"
+                  value={loginPassword}
+                  onChange={(event) => setLoginPassword(event.target.value)}
+                  style={{ borderRadius: 8, border: "1px solid #d4d7dc", padding: "8px 10px", fontSize: 13 }}
+                />
+                {loginError ? (
+                  <p style={{ margin: 0, color: "#b42318", fontSize: 12 }}>{loginError}</p>
+                ) : (
+                  <p style={{ margin: 0, color: "var(--muted)", fontSize: 12 }}>
+                    Inserisci le credenziali utente abilitate per questo tenant.
+                  </p>
+                )}
+                <div>
+                  <button
+                    type="button"
+                    onClick={submitChatLogin}
+                    disabled={loggingIn}
+                    style={{
+                      borderRadius: 8,
+                      border: "1px solid var(--ink)",
+                      background: "var(--ink)",
+                      color: "white",
+                      padding: "8px 12px",
+                      fontSize: 13,
+                      cursor: loggingIn ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {loggingIn ? "Accesso..." : "Accedi"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        ) : null}
       </header>
 
       <div
@@ -375,10 +511,12 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
             placeholder={
               profilingRequired && !customerProfile
                 ? "Inserisci prima nome ed email"
+                : authRequired && !chatUserEmail
+                ? "Accedi con email e password per iniziare"
                 : "Hei Ciao chiedimi quello che vuoi!!!"
             }
             rows={3}
-            disabled={profilingRequired && !customerProfile}
+            disabled={(profilingRequired && !customerProfile) || (authRequired && !chatUserEmail)}
             style={{
               width: "100%",
               resize: "vertical",
@@ -407,7 +545,7 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
               onClick={() => fileInputRef.current?.click()}
               aria-label="Allega file"
               disabled={uploading}
-              hidden={profilingRequired && !customerProfile}
+              hidden={(profilingRequired && !customerProfile) || (authRequired && !chatUserEmail)}
               style={{
                 borderRadius: "50%",
                 border: "1px solid var(--ink)",
@@ -435,7 +573,7 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
               data-tooltip={loading ? "Invio in corso" : "Invia messaggio"}
               type="submit"
               disabled={loading}
-              hidden={profilingRequired && !customerProfile}
+              hidden={(profilingRequired && !customerProfile) || (authRequired && !chatUserEmail)}
               aria-label={loading ? "Invio in corso" : "Invia messaggio"}
               style={{
                 borderRadius: "50%",

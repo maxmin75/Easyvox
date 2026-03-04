@@ -14,6 +14,7 @@ const createSchema = z.object({
   assistantName: z.string().min(2).max(80).optional(),
   canTakeAppointments: z.boolean().optional(),
   requireProfiling: z.boolean().optional(),
+  requireUserAuthForChat: z.boolean().optional(),
   systemPrompt: z.string().max(2000).optional(),
 });
 
@@ -60,6 +61,24 @@ export async function POST(request: NextRequest) {
     }
     throw error;
   }
+
+  await prismaAdmin.clientUser.upsert({
+    where: {
+      clientId_userId: {
+        clientId: client.id,
+        userId: user.id,
+      },
+    },
+    create: {
+      clientId: client.id,
+      userId: user.id,
+      role: "OWNER",
+    },
+    update: {
+      role: "OWNER",
+    },
+  });
+
   return NextResponse.json(client, { status: 201 });
 }
 

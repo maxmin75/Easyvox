@@ -31,5 +31,14 @@ export async function POST(request: NextRequest) {
     data: { ownerId: user.id },
   });
 
+  await prismaAdmin.clientUser.createMany({
+    data: ids.map((clientId) => ({
+      clientId,
+      userId: user.id,
+      role: "OWNER",
+    })),
+    skipDuplicates: true,
+  });
+
   return NextResponse.json({ imported: legacy.length, message: `Importati ${legacy.length} client legacy.` });
 }
