@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAdminUser } from "@/lib/api/admin";
+import { requireEasyVoxAdminUser } from "@/lib/api/admin";
 import {
   getPurchaseEmailRuntimeSettings,
   sendPurchaseIntentEmail,
@@ -15,7 +15,7 @@ const schema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const { denied } = await requireAdminUser(request);
+  const { denied } = await requireEasyVoxAdminUser(request);
   if (denied) return denied;
 
   const parsed = schema.safeParse(await request.json().catch(() => null));

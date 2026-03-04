@@ -7,6 +7,8 @@ type ControlUser = {
   id: string;
   email: string;
   name: string | null;
+  planTier: "FREE" | "PLUS";
+  plusPurchasedAt: string | null;
   createdAt: string;
   _count: {
     clients: number;
@@ -56,6 +58,12 @@ type ControlClient = {
 };
 
 type ControlCenterResponse = {
+  totals?: {
+    users: number;
+    plusUsers: number;
+    tenants: number;
+    purchaseIntents: number;
+  };
   users: ControlUser[];
   purchases: ControlPurchase[];
   clients: ControlClient[];
@@ -75,6 +83,7 @@ export default function AdminControlCenterPage() {
   const [users, setUsers] = useState<ControlUser[]>([]);
   const [purchases, setPurchases] = useState<ControlPurchase[]>([]);
   const [clients, setClients] = useState<ControlClient[]>([]);
+  const [plusUsers, setPlusUsers] = useState(0);
 
   useEffect(() => {
     void loadData();
@@ -85,8 +94,9 @@ export default function AdminControlCenterPage() {
       users: users.length,
       purchases: purchases.length,
       clients: clients.length,
+      plusUsers,
     }),
-    [users.length, purchases.length, clients.length],
+    [users.length, purchases.length, clients.length, plusUsers],
   );
 
   async function loadData() {
@@ -102,6 +112,7 @@ export default function AdminControlCenterPage() {
       setUsers(data.users ?? []);
       setPurchases(data.purchases ?? []);
       setClients(data.clients ?? []);
+      setPlusUsers(data.totals?.plusUsers ?? 0);
     } catch {
       setStatus("Errore di rete.");
     } finally {
@@ -150,6 +161,10 @@ export default function AdminControlCenterPage() {
           <p style={metricLabelStyle}>Clienti/Agenti</p>
           <strong style={metricValueStyle}>{totals.clients}</strong>
         </article>
+        <article className="card" style={{ padding: 14 }}>
+          <p style={metricLabelStyle}>Utenti Plus</p>
+          <strong style={metricValueStyle}>{totals.plusUsers}</strong>
+        </article>
       </section>
 
       {status ? (
@@ -170,6 +185,7 @@ export default function AdminControlCenterPage() {
                   <th style={thStyle}>Email</th>
                   <th style={thStyle}>Nome</th>
                   <th style={thStyle}>Creato il</th>
+                  <th style={thStyle}>Piano</th>
                   <th style={thStyle}>Clienti</th>
                   <th style={thStyle}>Sessioni</th>
                 </tr>
@@ -180,6 +196,10 @@ export default function AdminControlCenterPage() {
                     <td style={tdStyle}>{user.email}</td>
                     <td style={tdStyle}>{user.name || "-"}</td>
                     <td style={tdStyle}>{fmt(user.createdAt)}</td>
+                    <td style={tdStyle}>
+                      {user.planTier}
+                      {user.plusPurchasedAt ? ` (${fmt(user.plusPurchasedAt)})` : ""}
+                    </td>
                     <td style={tdStyle}>{user._count.clients}</td>
                     <td style={tdStyle}>{user._count.sessions}</td>
                   </tr>

@@ -279,10 +279,12 @@ export async function POST(request: NextRequest) {
         payloadCustomerName || payloadCustomerEmail
           ? `\nCliente: ${payloadCustomerName || "Cliente"}${payloadCustomerEmail ? ` (${payloadCustomerEmail})` : ""}.`
           : "";
+      const easyvoxSystemPrompt =
+        systemRuntimeSettings.easyvoxSystemPrompt?.trim() ||
+        "Sei Easyvox chat, helpdesk ufficiale EasyVox per utenti che stanno valutando o attivando il servizio. Rispondi in modo pratico e operativo: onboarding, configurazione, pricing, attivazione, integrazioni, troubleshooting di base. Se mancano dettagli specifici di un'azienda, dichiaralo e proponi i passaggi successivi.";
       const completion = await completeChatWithProvider(
         {
-          systemPrompt:
-            `Sei Easyvox chat, helpdesk ufficiale EasyVox per utenti che stanno valutando o attivando il servizio. Rispondi in modo pratico e operativo: onboarding, configurazione, pricing, attivazione, integrazioni, troubleshooting di base. Se mancano dettagli specifici di un'azienda, dichiaralo e proponi i passaggi successivi.
+          systemPrompt: `${easyvoxSystemPrompt}
 Rivolgiti sempre al cliente per nome quando appropriato.${easyvoxCustomerLine}`,
           userPrompt: parsed.data.message,
         },

@@ -12,6 +12,11 @@ enum ClientUserRole {
   MEMBER
 }
 
+enum PlanTier {
+  FREE
+  PLUS
+}
+
 model Client {
   id                  String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   ownerId             String?     @map("owner_id") @db.Uuid
@@ -46,6 +51,8 @@ model User {
   emailVerified DateTime?    @map("email_verified")
   image        String?
   passwordHash String?       @map("password_hash")
+  planTier     PlanTier      @default(FREE) @map("plan_tier")
+  plusPurchasedAt DateTime?  @map("plus_purchased_at")
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
   sessions       UserSession[]
@@ -266,6 +273,7 @@ model AppSetting {
   ollamaChatModel     String?  @map("ollama_chat_model")
   ollamaEmbeddingModel String? @map("ollama_embedding_model")
   appBaseUrl          String?  @map("app_base_url")
+  easyvoxSystemPrompt String?  @map("easyvox_system_prompt")
   purchaseEmailEnabled Boolean  @default(false) @map("purchase_email_enabled")
   resendApiKey        String?  @map("resend_api_key")
   purchaseEmailFrom   String?  @map("purchase_email_from")

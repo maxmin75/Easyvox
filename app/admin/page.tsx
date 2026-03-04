@@ -5,12 +5,14 @@ import { useEffect, useState } from "react";
 
 export default function AdminHomePage() {
   const [userEmail, setUserEmail] = useState("");
+  const [isEasyVoxAdmin, setIsEasyVoxAdmin] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/me")
       .then((response) => response.json())
-      .then((data: { user?: { email?: string } | null }) => {
+      .then((data: { user?: { email?: string } | null; isEasyVoxAdmin?: boolean }) => {
         if (data.user?.email) setUserEmail(data.user.email);
+        setIsEasyVoxAdmin(Boolean(data.isEasyVoxAdmin));
       })
       .catch(() => null);
   }, []);
@@ -62,6 +64,11 @@ export default function AdminHomePage() {
               LLM/AI, Email, Calendari, API
             </span>
           </Link>
+          {!isEasyVoxAdmin ? (
+            <span className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>
+              Alcune aree globali sono riservate all&apos;amministratore EasyVox.
+            </span>
+          ) : null}
 
           <Link href="/admin/agents" style={cardLinkStyle}>
             <strong>Assistenti / Agenti</strong>
@@ -80,6 +87,7 @@ export default function AdminHomePage() {
           <Link href="/admin/crm" style={quickLinkStyle}>CRM</Link>
           <Link href="/admin/chats" style={quickLinkStyle}>Chat</Link>
           <Link href="/admin/metrics" style={quickLinkStyle}>Metriche</Link>
+          {isEasyVoxAdmin ? <Link href="/admin/control-center" style={quickLinkStyle}>Control Center Globale</Link> : null}
         </div>
       </section>
     </main>

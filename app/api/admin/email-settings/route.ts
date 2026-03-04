@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prismaAdmin } from "@/lib/prisma-admin";
-import { requireAdminUser } from "@/lib/api/admin";
+import { requireEasyVoxAdminUser } from "@/lib/api/admin";
 import {
   DEFAULT_PURCHASE_EMAIL_BODY,
   DEFAULT_PURCHASE_EMAIL_SUBJECT,
@@ -23,7 +23,7 @@ const updateSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
-  const { denied } = await requireAdminUser(request);
+  const { denied } = await requireEasyVoxAdminUser(request);
   if (denied) return denied;
 
   const setting = await prismaAdmin.appSetting.findUnique({
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const { denied } = await requireAdminUser(request);
+  const { denied } = await requireEasyVoxAdminUser(request);
   if (denied) return denied;
 
   const parsed = updateSchema.safeParse(await request.json().catch(() => null));

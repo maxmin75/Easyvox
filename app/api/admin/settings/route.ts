@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prismaAdmin } from "@/lib/prisma-admin";
-import { requireAdminUser } from "@/lib/api/admin";
+import { requireEasyVoxAdminUser } from "@/lib/api/admin";
 import { envOverridesRuntimeSettings, getRuntimeSettings } from "@/lib/runtime-settings";
 
 export const runtime = "nodejs";
@@ -16,10 +16,11 @@ const settingsSchema = z.object({
   ollamaChatModel: z.string().min(3).max(80).optional(),
   ollamaEmbeddingModel: z.string().min(3).max(80).optional(),
   appBaseUrl: z.string().url().optional(),
+  easyvoxSystemPrompt: z.string().min(10).max(5000).optional(),
 });
 
 export async function GET(request: NextRequest) {
-  const { denied } = await requireAdminUser(request);
+  const { denied } = await requireEasyVoxAdminUser(request);
   if (denied) return denied;
 
   const runtime = await getRuntimeSettings();
@@ -34,6 +35,7 @@ export async function GET(request: NextRequest) {
       ollamaChatModel: runtime.ollamaChatModel,
       ollamaEmbeddingModel: runtime.ollamaEmbeddingModel,
       appBaseUrl: runtime.appBaseUrl,
+      easyvoxSystemPrompt: runtime.easyvoxSystemPrompt,
       blobConfigured: runtime.blobConfigured,
     },
     envOverrides: envOverridesRuntimeSettings(),
@@ -41,7 +43,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const { denied } = await requireAdminUser(request);
+  const { denied } = await requireEasyVoxAdminUser(request);
   if (denied) return denied;
 
   const parsed = settingsSchema.safeParse(await request.json().catch(() => null));
@@ -63,6 +65,7 @@ export async function PUT(request: NextRequest) {
       ollamaChatModel: data.ollamaChatModel,
       ollamaEmbeddingModel: data.ollamaEmbeddingModel,
       appBaseUrl: data.appBaseUrl,
+      easyvoxSystemPrompt: data.easyvoxSystemPrompt,
     },
     update: {
       ...(data.aiProvider ? { aiProvider: data.aiProvider } : {}),
@@ -76,6 +79,7 @@ export async function PUT(request: NextRequest) {
         ? { ollamaEmbeddingModel: data.ollamaEmbeddingModel }
         : {}),
       ...(data.appBaseUrl ? { appBaseUrl: data.appBaseUrl } : {}),
+      ...(data.easyvoxSystemPrompt ? { easyvoxSystemPrompt: data.easyvoxSystemPrompt } : {}),
     },
   });
 
@@ -92,6 +96,7 @@ export async function PUT(request: NextRequest) {
       ollamaChatModel: runtime.ollamaChatModel,
       ollamaEmbeddingModel: runtime.ollamaEmbeddingModel,
       appBaseUrl: runtime.appBaseUrl,
+      easyvoxSystemPrompt: runtime.easyvoxSystemPrompt,
       blobConfigured: runtime.blobConfigured,
     },
     envOverrides: envOverridesRuntimeSettings(),

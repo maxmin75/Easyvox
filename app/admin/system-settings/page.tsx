@@ -13,6 +13,7 @@ type AdminSettingsResponse = {
     ollamaChatModel: string;
     ollamaEmbeddingModel: string;
     appBaseUrl: string | null;
+    easyvoxSystemPrompt: string | null;
     blobConfigured: boolean;
   };
   envOverrides: {
@@ -30,6 +31,7 @@ type AdminSettingsResponse = {
 
 export default function SystemSettingsPage() {
   const [userEmail, setUserEmail] = useState("");
+  const [isEasyVoxAdmin, setIsEasyVoxAdmin] = useState(false);
   const [status, setStatus] = useState<string>("");
 
   const [aiProvider, setAiProvider] = useState<"openai" | "ollama">("ollama");
@@ -40,6 +42,7 @@ export default function SystemSettingsPage() {
   const [ollamaChatModel, setOllamaChatModel] = useState("qwen2.5:7b");
   const [ollamaEmbeddingModel, setOllamaEmbeddingModel] = useState("nomic-embed-text");
   const [appBaseUrl, setAppBaseUrl] = useState("");
+  const [easyvoxSystemPrompt, setEasyvoxSystemPrompt] = useState("");
   const [hasOpenaiApiKey, setHasOpenaiApiKey] = useState(false);
   const [blobConfigured, setBlobConfigured] = useState(false);
   const [envOverrides, setEnvOverrides] = useState<AdminSettingsResponse["envOverrides"] | null>(
@@ -61,6 +64,7 @@ export default function SystemSettingsPage() {
     setOllamaChatModel(data.settings.ollamaChatModel);
     setOllamaEmbeddingModel(data.settings.ollamaEmbeddingModel);
     setAppBaseUrl(data.settings.appBaseUrl ?? "");
+    setEasyvoxSystemPrompt(data.settings.easyvoxSystemPrompt ?? "");
     setHasOpenaiApiKey(data.settings.hasOpenaiApiKey);
     setBlobConfigured(data.settings.blobConfigured);
     setEnvOverrides(data.envOverrides);
@@ -70,8 +74,9 @@ export default function SystemSettingsPage() {
   useEffect(() => {
     fetch("/api/auth/me")
       .then((response) => response.json())
-      .then((data: { user?: { email?: string } | null }) => {
+      .then((data: { user?: { email?: string } | null; isEasyVoxAdmin?: boolean }) => {
         if (data.user?.email) setUserEmail(data.user.email);
+        setIsEasyVoxAdmin(Boolean(data.isEasyVoxAdmin));
       })
       .catch(() => null);
 
@@ -83,6 +88,10 @@ export default function SystemSettingsPage() {
 
   async function saveSettings(event: FormEvent) {
     event.preventDefault();
+    if (!isEasyVoxAdmin) {
+      setStatus("Permesso negato: solo admin EasyVox.");
+      return;
+    }
 
     const response = await fetch("/api/admin/settings", {
       method: "PUT",
@@ -96,6 +105,7 @@ export default function SystemSettingsPage() {
         ollamaChatModel,
         ollamaEmbeddingModel,
         appBaseUrl: appBaseUrl.trim() || undefined,
+        easyvoxSystemPrompt: easyvoxSystemPrompt.trim() || undefined,
       }),
     });
 
@@ -135,7 +145,15 @@ export default function SystemSettingsPage() {
         </div>
       </section>
 
-      <section className="card" style={{ padding: 16, display: "grid", gap: 12 }}>
+      {!isEasyVoxAdmin ? (
+        <section className="card" style={{ padding: 16 }}>
+          <p className="mono" style={{ margin: 0, fontSize: 12, color: "var(--muted)" }}>
+            Area riservata all&apos;amministratore EasyVox. Come tenant puoi gestire agenti, CRM, chat e appuntamenti.
+          </p>
+        </section>
+      ) : null}
+
+      <section className="card" style={{ padding: 16, display: "grid", gap: 12, opacity: isEasyVoxAdmin ? 1 : 0.5 }}>
         <h2 style={{ margin: 0, fontSize: 20 }}>LLM / AI</h2>
         <p className="mono" style={{ margin: 0, fontSize: 12, color: "var(--muted)" }}>
           ENV ha priorita su DB. Per provider Ollama imposta base URL e modelli.
@@ -205,7 +223,14 @@ export default function SystemSettingsPage() {
             onChange={(event) => setAppBaseUrl(event.target.value)}
             style={inputStyle}
           />
-          <button type="submit" style={buttonPrimary}>Salva impostazioni AI/API</button>
+          <textarea
+            placeholder="Prompt di sistema EasyVox (chat senza tenant)"
+            value={easyvoxSystemPrompt}
+            onChange={(event) => setEasyvoxSystemPrompt(event.target.value)}
+            rows={5}
+            style={{ ...inputStyle, resize: "vertical" }}
+          />
+          <button type="submit" style={buttonPrimary} disabled={!isEasyVoxAdmin}>Salva impostazioni AI/API</button>
         </form>
       </section>
 

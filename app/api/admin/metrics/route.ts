@@ -6,13 +6,16 @@ import { claimLegacyClientsIfNeeded } from "@/lib/admin/clients";
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const { user, denied } = await requireAdminUser(request);
+  const { user, denied, isEasyVoxAdmin } = await requireAdminUser(request);
   if (denied) return denied;
   await claimLegacyClientsIfNeeded(user.id);
 
   const clientId = request.nextUrl.searchParams.get("clientId") ?? undefined;
   const ownedClients = await prismaAdmin.client.findMany({
-    where: { ownerId: user.id, ...(clientId ? { id: clientId } : {}) },
+    where: {
+      ...(isEasyVoxAdmin ? {} : { ownerId: user.id }),
+      ...(clientId ? { id: clientId } : {}),
+    },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,

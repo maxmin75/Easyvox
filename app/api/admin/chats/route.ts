@@ -51,7 +51,7 @@ type SessionAggregate = {
 };
 
 export async function GET(request: NextRequest) {
-  const { user, denied } = await requireAdminUser(request);
+  const { user, denied, isEasyVoxAdmin } = await requireAdminUser(request);
   if (denied) return denied;
   await claimLegacyClientsIfNeeded(user.id);
 
@@ -62,7 +62,10 @@ export async function GET(request: NextRequest) {
   if (!parsed.success) return jsonError("Query non valida", 400);
 
   const ownedClients = await prismaAdmin.client.findMany({
-    where: { ownerId: user.id, ...(parsed.data.clientId ? { id: parsed.data.clientId } : {}) },
+    where: {
+      ...(isEasyVoxAdmin ? {} : { ownerId: user.id }),
+      ...(parsed.data.clientId ? { id: parsed.data.clientId } : {}),
+    },
     select: { id: true, name: true, slug: true },
     orderBy: { createdAt: "desc" },
   });

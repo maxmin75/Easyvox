@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prismaAdmin } from "@/lib/prisma-admin";
-import { requireAdminUser } from "@/lib/api/admin";
-import { jsonError } from "@/lib/api/errors";
-import { isEasyVoxAdminEmail } from "@/lib/admin/access";
+import { requireEasyVoxAdminUser } from "@/lib/api/admin";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const { user, denied } = await requireAdminUser(request);
+  const { denied } = await requireEasyVoxAdminUser(request);
   if (denied) return denied;
-  if (!isEasyVoxAdminEmail(user.email)) return jsonError("Area riservata all'amministratore EasyVox.", 403);
 
   const [users, purchases, clients] = await Promise.all([
     prismaAdmin.user.findMany({
@@ -18,6 +15,8 @@ export async function GET(request: NextRequest) {
         id: true,
         email: true,
         name: true,
+        planTier: true,
+        plusPurchasedAt: true,
         createdAt: true,
         _count: {
           select: {
@@ -79,6 +78,12 @@ export async function GET(request: NextRequest) {
   ]);
 
   return NextResponse.json({
+    totals: {
+      users: users.length,
+      plusUsers: users.filter((user) => user.planTier === "PLUS").length,
+      tenants: clients.length,
+      purchaseIntents: purchases.length,
+    },
     users,
     purchases,
     clients: clients.map((client) => ({

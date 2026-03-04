@@ -17,6 +17,7 @@ type RuntimeSettings = {
   ollamaChatModel: string;
   ollamaEmbeddingModel: string;
   appBaseUrl: string | null;
+  easyvoxSystemPrompt: string | null;
   blobConfigured: boolean;
 };
 
@@ -38,6 +39,7 @@ export async function getRuntimeSettings(): Promise<RuntimeSettings> {
       ollamaChatModel: true,
       ollamaEmbeddingModel: true,
       appBaseUrl: true,
+      easyvoxSystemPrompt: true,
     },
   });
 
@@ -63,6 +65,7 @@ export async function getRuntimeSettings(): Promise<RuntimeSettings> {
       setting?.ollamaEmbeddingModel ??
       DEFAULT_OLLAMA_EMBEDDING_MODEL,
     appBaseUrl: process.env.APP_BASE_URL ?? setting?.appBaseUrl ?? null,
+    easyvoxSystemPrompt: setting?.easyvoxSystemPrompt ?? null,
     blobConfigured: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
   };
 }

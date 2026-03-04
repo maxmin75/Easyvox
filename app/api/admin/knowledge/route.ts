@@ -16,7 +16,7 @@ const deleteSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
-  const { user, denied } = await requireAdminUser(request);
+  const { user, denied, isEasyVoxAdmin } = await requireAdminUser(request);
   if (denied) return denied;
 
   const parsed = agentSchema.safeParse({
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
   const agent = await prismaAdmin.client.findFirst({
     where: {
       id: parsed.data.agentId,
-      ownerId: user.id,
+      ...(isEasyVoxAdmin ? {} : { ownerId: user.id }),
     },
     select: { id: true },
   });
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { user, denied } = await requireAdminUser(request);
+  const { user, denied, isEasyVoxAdmin } = await requireAdminUser(request);
   if (denied) return denied;
 
   const parsed = deleteSchema.safeParse({
@@ -72,7 +72,7 @@ export async function DELETE(request: NextRequest) {
   const agent = await prismaAdmin.client.findFirst({
     where: {
       id: parsed.data.agentId,
-      ownerId: user.id,
+      ...(isEasyVoxAdmin ? {} : { ownerId: user.id }),
     },
     select: { id: true },
   });
