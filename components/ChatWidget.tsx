@@ -153,161 +153,73 @@ function MarkdownMessage({ text, isUser }: { text: string; isUser: boolean }) {
 }
 
 function ProductCardMessage({ productCard }: { productCard: NonNullable<Message["productCard"]> }) {
-  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
-
   return (
-    <>
-      <article
-        style={{
-          width: "100%",
-          maxWidth: 420,
-          display: "grid",
-          gap: 10,
-          padding: 12,
-          borderRadius: 16,
-          border: "1px solid rgba(15, 23, 42, 0.12)",
-          background: "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(245,247,250,0.96))",
-          boxShadow: "0 14px 34px rgba(15, 23, 42, 0.08)",
-        }}
-      >
-        {productCard.imageUrl ? (
-          <button
-            type="button"
-            onClick={() => setIsImageModalOpen(true)}
-            style={{
-              padding: 0,
-              border: "none",
-              background: "transparent",
-              cursor: "zoom-in",
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={productCard.imageUrl}
-              alt={productCard.title}
-              style={{ width: "100%", height: 180, objectFit: "cover", borderRadius: 12 }}
-            />
-          </button>
-        ) : null}
-        <div style={{ display: "grid", gap: 6 }}>
-          <strong style={{ fontSize: 18, lineHeight: 1.2 }}>{productCard.title}</strong>
-          <p style={{ margin: 0, fontSize: 13, color: "#475467", lineHeight: 1.5 }}>{productCard.description}</p>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+    <article
+      style={{
+        width: "100%",
+        maxWidth: 320,
+        display: "grid",
+        gap: 10,
+        justifyItems: "start",
+      }}
+    >
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 999,
+            padding: "8px 12px",
+            background: "#eceff3",
+            color: "#111827",
+            fontSize: 12,
+            fontWeight: 600,
+            border: "1px solid rgba(17, 24, 39, 0.08)",
+          }}
+        >
+          {productCard.priceLabel}
+        </span>
+        {productCard.discountLabel ? (
           <span
             style={{
               display: "inline-flex",
-              padding: "6px 10px",
+              alignItems: "center",
+              justifyContent: "center",
               borderRadius: 999,
-              background: "#102a56",
-              color: "white",
+              padding: "8px 12px",
+              background: "#eceff3",
+              color: "#111827",
               fontSize: 12,
-              fontWeight: 700,
+              fontWeight: 600,
+              border: "1px solid rgba(17, 24, 39, 0.08)",
             }}
           >
-            {productCard.priceLabel}
+            Sconto {productCard.discountLabel}
           </span>
-          {productCard.discountLabel ? (
-            <span
-              style={{
-                display: "inline-flex",
-                padding: "6px 10px",
-                borderRadius: 999,
-                background: "rgba(244, 162, 97, 0.16)",
-                color: "#9a3412",
-                fontSize: 12,
-                fontWeight: 700,
-              }}
-            >
-              Sconto {productCard.discountLabel}
-            </span>
-          ) : null}
-        </div>
-        <Link
-          href={productCard.productUrl}
-          target="_blank"
-          rel="noreferrer"
-          style={{
-            display: "inline-flex",
-            width: "fit-content",
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: 10,
-            padding: "10px 14px",
-            background: "#102a56",
-            color: "white",
-            textDecoration: "none",
-            fontSize: 13,
-            fontWeight: 700,
-          }}
-        >
-          Apri prodotto
-        </Link>
-      </article>
-
-      {isImageModalOpen && productCard.imageUrl ? (
-        <div
-          onClick={() => setIsImageModalOpen(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 2147483647,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 24,
-            background: "rgba(15, 23, 42, 0.78)",
-          }}
-        >
-          <div
-            onClick={(event) => event.stopPropagation()}
-            style={{
-              position: "relative",
-              maxWidth: "min(92vw, 980px)",
-              maxHeight: "88vh",
-              display: "grid",
-              gap: 10,
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setIsImageModalOpen(false)}
-              aria-label="Chiudi immagine"
-              style={{
-                position: "absolute",
-                top: 10,
-                right: 10,
-                zIndex: 1,
-                width: 36,
-                height: 36,
-                border: "none",
-                borderRadius: 999,
-                background: "rgba(15, 23, 42, 0.72)",
-                color: "white",
-                fontSize: 22,
-                lineHeight: 1,
-                cursor: "pointer",
-              }}
-            >
-              ×
-            </button>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={productCard.imageUrl}
-              alt={productCard.title}
-              style={{
-                maxWidth: "100%",
-                maxHeight: "88vh",
-                objectFit: "contain",
-                borderRadius: 18,
-                background: "white",
-                boxShadow: "0 24px 60px rgba(0,0,0,0.28)",
-              }}
-            />
-          </div>
-        </div>
-      ) : null}
-    </>
+        ) : null}
+      </div>
+      <Link
+        href={productCard.productUrl}
+        target="_blank"
+        rel="noreferrer"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: 999,
+          padding: "8px 12px",
+          background: "#eceff3",
+          color: "#111827",
+          textDecoration: "none",
+          fontSize: 12,
+          fontWeight: 600,
+          border: "1px solid rgba(17, 24, 39, 0.08)",
+        }}
+      >
+        Apri prodotto
+      </Link>
+    </article>
   );
 }
 
