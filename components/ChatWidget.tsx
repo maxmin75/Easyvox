@@ -163,6 +163,16 @@ function ProductCardMessage({ productCard }: { productCard: NonNullable<Message[
         justifyItems: "start",
       }}
     >
+      <p
+        style={{
+          margin: 0,
+          fontSize: 13,
+          lineHeight: 1.5,
+          color: "#374151",
+        }}
+      >
+        {productCard.description}
+      </p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <span
           style={{
