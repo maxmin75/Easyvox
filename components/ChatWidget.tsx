@@ -157,7 +157,7 @@ function ProductCardMessage({ productCard }: { productCard: NonNullable<Message[
     <article
       style={{
         width: "100%",
-        maxWidth: 320,
+        maxWidth: 420,
         display: "grid",
         gap: 10,
         justifyItems: "start",
@@ -173,7 +173,7 @@ function ProductCardMessage({ productCard }: { productCard: NonNullable<Message[
       >
         {productCard.description}
       </p>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "nowrap", alignItems: "center" }}>
         <span
           style={{
             display: "inline-flex",
@@ -187,6 +187,7 @@ function ProductCardMessage({ productCard }: { productCard: NonNullable<Message[
             fontWeight: 600,
             border: "1px solid rgba(17, 24, 39, 0.08)",
             lineHeight: 1.1,
+            whiteSpace: "nowrap",
           }}
         >
           {productCard.priceLabel}
@@ -205,33 +206,35 @@ function ProductCardMessage({ productCard }: { productCard: NonNullable<Message[
               fontWeight: 600,
               border: "1px solid rgba(17, 24, 39, 0.08)",
               lineHeight: 1.1,
+              whiteSpace: "nowrap",
             }}
           >
             Sconto {productCard.discountLabel}
           </span>
         ) : null}
+        <Link
+          href={productCard.productUrl}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 999,
+            padding: "5px 9px",
+            background: "#eceff3",
+            color: "#111827",
+            textDecoration: "none",
+            fontSize: 11,
+            fontWeight: 600,
+            border: "1px solid rgba(17, 24, 39, 0.08)",
+            lineHeight: 1.1,
+            whiteSpace: "nowrap",
+          }}
+        >
+          Acquista
+        </Link>
       </div>
-      <Link
-        href={productCard.productUrl}
-        target="_blank"
-        rel="noreferrer"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          borderRadius: 999,
-          padding: "5px 9px",
-          background: "#eceff3",
-          color: "#111827",
-          textDecoration: "none",
-          fontSize: 11,
-          fontWeight: 600,
-          border: "1px solid rgba(17, 24, 39, 0.08)",
-          lineHeight: 1.1,
-        }}
-      >
-        Apri prodotto
-      </Link>
     </article>
   );
 }
@@ -300,7 +303,6 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
   const [tenantSuspended, setTenantSuspended] = useState(false);
   const [chatUserEmail, setChatUserEmail] = useState("");
   const [loginEmail, setLoginEmail] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
   const [registerName, setRegisterName] = useState("");
   const [chatAuthMode, setChatAuthMode] = useState<"login" | "register">("login");
   const [loginError, setLoginError] = useState("");
@@ -1052,8 +1054,8 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
   async function submitChatLogin() {
     if (!tenantHeaderValue || tenantSuspended) return;
     const email = loginEmail.trim().toLowerCase();
-    if (!email || !loginPassword) {
-      setLoginError("Inserisci email e password.");
+    if (!email) {
+      setLoginError("Inserisci l'email.");
       return;
     }
 
@@ -1067,7 +1069,7 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
           "content-type": "application/json",
           [tenantHeaderKey]: tenantHeaderValue,
         },
-        body: JSON.stringify({ email, password: loginPassword }),
+        body: JSON.stringify({ email }),
       });
       const data = (await response.json()) as {
         error?: string;
@@ -1091,7 +1093,6 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
       setCustomerProfile(profile);
       persistChatAccessProfile(profile);
       setLoginEmail("");
-      setLoginPassword("");
       setLoginError("");
       setLoginNotice("");
     } catch {
@@ -1105,8 +1106,8 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
     if (!tenantHeaderValue || tenantSuspended) return;
     const name = registerName.trim();
     const email = loginEmail.trim().toLowerCase();
-    if (!name || !email || !loginPassword) {
-      setLoginError("Inserisci nome, email e password.");
+    if (!name || !email) {
+      setLoginError("Inserisci nome ed email.");
       return;
     }
 
@@ -1120,7 +1121,7 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
           "content-type": "application/json",
           [tenantHeaderKey]: tenantHeaderValue,
         },
-        body: JSON.stringify({ name, email, password: loginPassword }),
+        body: JSON.stringify({ name, email }),
       });
       const data = (await response.json()) as {
         error?: string;
@@ -1134,7 +1135,6 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
       setChatAuthMode("login");
       setRegisterName("");
       setLoginEmail("");
-      setLoginPassword("");
       setLoginError("");
       setLoginNotice("Ti abbiamo inviato una mail di conferma. Clicca il link per attivare il profilo chat.");
     } catch {
@@ -1263,13 +1263,6 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
                   onChange={(event) => setLoginEmail(event.target.value)}
                   style={{ borderRadius: 8, border: "1px solid #d4d7dc", padding: "8px 10px", fontSize: 16 }}
                 />
-                <input
-                  type="password"
-                  placeholder="password"
-                  value={loginPassword}
-                  onChange={(event) => setLoginPassword(event.target.value)}
-                  style={{ borderRadius: 8, border: "1px solid #d4d7dc", padding: "8px 10px", fontSize: 16 }}
-                />
                 {loginError ? (
                   <p style={{ margin: 0, color: "#b42318", fontSize: 12 }}>{loginError}</p>
                 ) : loginNotice ? (
@@ -1277,8 +1270,8 @@ export function ChatWidget({ clientId, username, apiBaseUrl = "", sessionId }: C
                 ) : (
                   <p style={{ margin: 0, color: "var(--muted)", fontSize: 12 }}>
                     {chatAuthMode === "login"
-                      ? "Inserisci le credenziali utente abilitate per questo tenant."
-                      : "Crea un account chat per questo tenant. Ti invieremo un link email da cliccare per confermare l'indirizzo."}
+                      ? "Inserisci l'email dell'utente chat abilitato per questo tenant."
+                      : "Crea un profilo chat con nome ed email. Ti invieremo un link email da cliccare per confermare l'indirizzo."}
                   </p>
                 )}
                 <div>

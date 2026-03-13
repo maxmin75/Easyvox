@@ -2086,7 +2086,7 @@ body:has(.vox-home) .topbar {
   }
 
   .chat-input-form {
-    bottom: 40px !important;
+    bottom: 14px !important;
     left: 20px !important;
     transform: none !important;
     width: calc(100vw - 40px) !important;
