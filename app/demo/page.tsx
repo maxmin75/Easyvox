@@ -1,4 +1,7 @@
 import { ChatWidget } from "@/components/ChatWidget";
+import { CatalogSidebar } from "@/components/CatalogSidebar";
+import { QuoteSidebar } from "@/components/QuoteSidebar";
+import { Particles } from "@/components/ui/particles";
 
 export default async function DemoPage({
   searchParams,
@@ -7,33 +10,35 @@ export default async function DemoPage({
 }) {
   const params = await searchParams;
   const clientId = params.clientId;
-  const username = params.username ?? params.ditta;
+  const username = params.username ?? params.ditta ?? (clientId ? undefined : "vox");
 
   return (
-    <main className="container" style={{ padding: "32px 0 56px", display: "grid", gap: 18 }}>
-      <h1 className="demo-title">Easyvox chat</h1>
-      <p className="mono demo-subtitle">
-        Chat Ai embendabile, multi-assistente, crea e forma la figura che ti serve, commerciale, gestionale,
-        segreteria, statistica, etc...
-      </p>
-      <div className="demo-ai-tags" aria-label="Modelli AI disponibili">
-        <span>GPT-4o</span>
-        <span>GPT-4.1</span>
-        <span>GPT-4 Turbo</span>
-        <span>GPT-3.5 Turbo</span>
-        <span>o3-mini (reasoning)</span>
-        <span>o4-mini (reasoning)</span>
-        <span>Claude 3 Opus</span>
-        <span>Claude 3 Sonnet</span>
-        <span>Claude 3 Haiku</span>
-        <span>Llama 3 8B</span>
-        <span>Llama 3 70B</span>
-        <span>Claude</span>
-        <span>Llama</span>
-        <span>Mistral</span>
-        <span>Titan (Amazon)</span>
+    <>
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 0,
+          pointerEvents: "none",
+        }}
+      >
+        <Particles quantity={150} staticity={30} ease={90} size={1.7} color="#6f8fff" />
       </div>
-      <ChatWidget clientId={clientId} username={username} />
-    </main>
+      <main
+        className="container"
+        style={{
+          position: "relative",
+          zIndex: 1,
+          minHeight: "calc(100vh - 120px)",
+          padding: "32px 0 56px",
+          display: "grid",
+          gap: 18,
+        }}
+      >
+        <ChatWidget clientId={clientId} username={username} />
+      </main>
+      <QuoteSidebar clientId={clientId} username={username} />
+      <CatalogSidebar />
+    </>
   );
 }

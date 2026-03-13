@@ -80,7 +80,7 @@ export async function getAuthUserFromToken(token: string | null) {
     where: { tokenHash: hashToken(token) },
     include: {
       user: {
-        select: { id: true, email: true, createdAt: true },
+        select: { id: true, email: true, name: true, createdAt: true },
       },
     },
   });
@@ -101,7 +101,7 @@ export async function getAuthUserFromNextAuthSession() {
   if (session.user.id) {
     const user = await prismaAdmin.user.findUnique({
       where: { id: session.user.id },
-      select: { id: true, email: true, createdAt: true },
+      select: { id: true, email: true, name: true, createdAt: true },
     });
     if (user) return user;
   }
@@ -109,7 +109,7 @@ export async function getAuthUserFromNextAuthSession() {
   if (!session.user.email) return null;
   return prismaAdmin.user.findUnique({
     where: { email: session.user.email },
-    select: { id: true, email: true, createdAt: true },
+    select: { id: true, email: true, name: true, createdAt: true },
   });
 }
 

@@ -1,120 +1,67 @@
+import easyvoxCatalog from "@/data/easyvox-catalog.json";
+
 export type MockProduct = {
   id: string;
+  slug: string;
   name: string;
-  category: "audio" | "smart-home" | "accessories";
+  category: string;
+  utilityScore: number;
   price: number;
-  stock: number;
-  deliveryDays: number;
+  priceFormatted: string;
+  discountPercent: number;
+  shortDescription: string;
   description: string;
+  priceLabel: string;
+  activationLabel: string;
+  relatedProductIds: string[];
+  productUrl?: string;
+  image?: string;
+  tags: string[];
 };
 
-export const mockProducts: MockProduct[] = [
-  {
-    id: "p-001",
-    name: "Echo Mini Speaker",
-    category: "audio",
-    price: 49,
-    stock: 18,
-    deliveryDays: 2,
-    description: "Speaker compatto con audio bilanciato per stanze piccole.",
-  },
-  {
-    id: "p-002",
-    name: "Echo Room Pro",
-    category: "audio",
-    price: 129,
-    stock: 12,
-    deliveryDays: 3,
-    description: "Speaker multi-room con bassi profondi e controllo vocale.",
-  },
-  {
-    id: "p-003",
-    name: "SoundBeam Bar",
-    category: "audio",
-    price: 219,
-    stock: 7,
-    deliveryDays: 4,
-    description: "Soundbar sottile con modalità cinema e bluetooth 5.3.",
-  },
-  {
-    id: "p-004",
-    name: "Voice Hub Max",
-    category: "smart-home",
-    price: 159,
-    stock: 10,
-    deliveryDays: 2,
-    description: "Hub centrale per automazioni domestiche e scene personalizzate.",
-  },
-  {
-    id: "p-005",
-    name: "Secure Cam 360",
-    category: "smart-home",
-    price: 89,
-    stock: 15,
-    deliveryDays: 2,
-    description: "Telecamera interna con rotazione completa e visione notturna.",
-  },
-  {
-    id: "p-006",
-    name: "Smart Plug Duo",
-    category: "smart-home",
-    price: 34,
-    stock: 40,
-    deliveryDays: 1,
-    description: "Presa intelligente doppia con monitoraggio consumi in tempo reale.",
-  },
-  {
-    id: "p-007",
-    name: "AirSense Thermostat",
-    category: "smart-home",
-    price: 199,
-    stock: 8,
-    deliveryDays: 3,
-    description: "Termostato smart con programmazione settimanale e geo-fencing.",
-  },
-  {
-    id: "p-008",
-    name: "Litebuds S",
-    category: "accessories",
-    price: 59,
-    stock: 30,
-    deliveryDays: 2,
-    description: "Auricolari true wireless con cancellazione rumore leggera.",
-  },
-  {
-    id: "p-009",
-    name: "PowerDock 6-in-1",
-    category: "accessories",
-    price: 79,
-    stock: 20,
-    deliveryDays: 2,
-    description: "Dock USB-C con HDMI 4K e ricarica passthrough fino a 100W.",
-  },
-  {
-    id: "p-010",
-    name: "Carry Case Flex",
-    category: "accessories",
-    price: 24,
-    stock: 50,
-    deliveryDays: 1,
-    description: "Custodia rigida universale con divisori interni modulabili.",
-  },
-  {
-    id: "p-011",
-    name: "Wave Mic USB",
-    category: "audio",
-    price: 99,
-    stock: 14,
-    deliveryDays: 3,
-    description: "Microfono cardioide USB per call e streaming con filtro integrato.",
-  },
-  {
-    id: "p-012",
-    name: "ChargePad Trio",
-    category: "accessories",
-    price: 69,
-    stock: 16,
-    deliveryDays: 2,
-    description: "Base di ricarica wireless per telefono, watch e auricolari.",
-  },
-];
+type RawCatalogProduct = {
+  id_prodotto: number;
+  slug: string;
+  categoria: string;
+  titolo: string;
+  immagine?: string;
+  descrizione_breve: string;
+  descrizione_lunga: string;
+  prezzo: number;
+  prezzo_formattato: string;
+  sconto: number;
+  tag_prodotto?: string[];
+  url?: string;
+  prodotti_correlati?: number[];
+};
+
+type RawCatalog = {
+  brand: string;
+  base_url: string;
+  currency: string;
+  products: RawCatalogProduct[];
+};
+
+const rawCatalog = easyvoxCatalog as RawCatalog;
+export { rawCatalog as easyvoxCatalogSource };
+
+export const mockProducts: MockProduct[] = rawCatalog.products.map((product) => ({
+  id: `evx-${String(product.id_prodotto).padStart(3, "0")}`,
+  slug: product.slug,
+  name: product.titolo,
+  category: product.categoria,
+  utilityScore: 10,
+  price: product.prezzo,
+  priceFormatted: product.prezzo_formattato,
+  discountPercent: product.sconto,
+  shortDescription: product.descrizione_breve,
+  description: product.descrizione_lunga,
+  priceLabel: product.prezzo_formattato,
+  activationLabel: product.categoria,
+  relatedProductIds: (product.prodotti_correlati ?? []).map(
+    (relatedId) => `evx-${String(relatedId).padStart(3, "0")}`,
+  ),
+  productUrl: product.url || rawCatalog.base_url,
+  image: product.immagine,
+  tags: product.tag_prodotto ?? [],
+}));

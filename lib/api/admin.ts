@@ -8,7 +8,14 @@ export async function requireAdminUser(request: NextRequest) {
   if (!user) {
     return { user: null, denied: jsonError("Non autorizzato", 401), isEasyVoxAdmin: false };
   }
-  return { user, denied: null, isEasyVoxAdmin: isEasyVoxAdminEmail(user.email) };
+  if (!isEasyVoxAdminEmail(user.email)) {
+    return {
+      user: null,
+      denied: jsonError("Area riservata all'amministratore EasyVox.", 403),
+      isEasyVoxAdmin: false,
+    };
+  }
+  return { user, denied: null, isEasyVoxAdmin: true };
 }
 
 export async function requireEasyVoxAdminUser(request: NextRequest) {

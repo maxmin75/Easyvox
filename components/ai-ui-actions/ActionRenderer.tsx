@@ -10,9 +10,10 @@ import styles from "@/components/ai-ui-actions/actions.module.css";
 
 type ActionRendererProps = {
   actions: UiAction[];
+  clientSlug?: string;
 };
 
-export function ActionRenderer({ actions }: ActionRendererProps) {
+export function ActionRenderer({ actions, clientSlug }: ActionRendererProps) {
   if (actions.length === 0) return null;
 
   return (
@@ -21,11 +22,18 @@ export function ActionRenderer({ actions }: ActionRendererProps) {
         const key = `${action.type}-${index}`;
 
         if (action.type === "SHOW_PRODUCTS") {
-          return <ProductGrid key={key} query={action.payload.query} category={action.payload.category} />;
+          return (
+            <ProductGrid
+              key={key}
+              query={action.payload.query}
+              category={action.payload.category}
+              clientSlug={clientSlug}
+            />
+          );
         }
 
         if (action.type === "OPEN_PRODUCT") {
-          return <ProductModal key={key} productId={action.payload.productId} />;
+          return <ProductModal key={key} productId={action.payload.productId} clientSlug={clientSlug} />;
         }
 
         if (action.type === "OPEN_BOOKING_MODAL") {

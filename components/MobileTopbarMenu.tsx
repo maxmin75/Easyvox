@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import TopbarAuthAction from "@/components/TopbarAuthAction";
 import TopbarSettingsLink from "@/components/TopbarSettingsLink";
 
@@ -16,6 +16,7 @@ type MobileTopbarMenuProps = {
   isAdmin: boolean;
   agents: Agent[];
   settingsHref: string | null;
+  recognizedName?: string | null;
 };
 
 export default function MobileTopbarMenu({
@@ -23,6 +24,7 @@ export default function MobileTopbarMenu({
   isAdmin,
   agents,
   settingsHref,
+  recognizedName,
 }: MobileTopbarMenuProps) {
   const detailsRef = useRef<HTMLDetailsElement>(null);
 
@@ -32,15 +34,45 @@ export default function MobileTopbarMenu({
     }
   }
 
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      const details = detailsRef.current;
+      if (!details?.open) return;
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (details.contains(target)) return;
+      details.open = false;
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const details = detailsRef.current;
+      if (!details?.open) return;
+      if (event.key === "Escape") details.open = false;
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown, { passive: true });
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
   return (
     <div className="topbar-mobile-controls">
       {isAuthenticated && settingsHref ? (
         <TopbarSettingsLink href={settingsHref} className="topbar-settings-link topbar-settings-tooltip" />
       ) : null}
-      <TopbarAuthAction isAuthenticated={isAuthenticated} className="topbar-auth topbar-auth-ghost" />
+      <TopbarAuthAction
+        isAuthenticated={isAuthenticated}
+        recognizedName={recognizedName}
+        className="topbar-auth topbar-auth-ghost"
+      />
       {!isAuthenticated ? (
-        <Link href="/login" className="topbar-auth topbar-auth-solid" onClick={closeMenu}>
-          Sign up
+        <Link href="/login?tab=admin" className="topbar-auth topbar-auth-solid" onClick={closeMenu}>
+          Admin
         </Link>
       ) : null}
       <details className="topbar-mobile" ref={detailsRef}>
@@ -53,8 +85,8 @@ export default function MobileTopbarMenu({
         </summary>
         <nav className="topbar-nav topbar-nav-mobile" aria-label="Aree progetto">
           <div className="topbar-dropdown">
-            <Link href="/demo" className="topbar-link" aria-label="Easyvox chat" title="Easyvox chat" onClick={closeMenu}>
-              Easyvox chat
+            <Link href="/demo" className="topbar-link" aria-label="Vox" title="Vox" onClick={closeMenu}>
+              Vox
               <span className="topbar-caret" aria-hidden="true">
                 ▾
               </span>
@@ -62,7 +94,7 @@ export default function MobileTopbarMenu({
             <div className="topbar-menu" role="menu" aria-label="Agenti attivi">
               <p className="topbar-menu-title">Seleziona agente per test</p>
               <Link href="/demo" className="topbar-menu-item" onClick={closeMenu}>
-                Easyvox chat
+                Vox
               </Link>
               {agents.length > 0 ? (
                 agents.map((agent) => (
@@ -80,6 +112,9 @@ export default function MobileTopbarMenu({
               )}
             </div>
           </div>
+          <Link href="/login?tab=admin" className="topbar-link" aria-label="Admin" title="Admin" onClick={closeMenu}>
+            Admin
+          </Link>
           {isAuthenticated ? (
             isAdmin ? (
               <>
@@ -92,6 +127,9 @@ export default function MobileTopbarMenu({
                 <Link href="/admin/crm" className="topbar-link" aria-label="CRM" title="CRM" onClick={closeMenu}>
                   CRM
                 </Link>
+                <Link href="/admin/catalog" className="topbar-link" aria-label="Catalogo" title="Catalogo" onClick={closeMenu}>
+                  Catalogo
+                </Link>
                 <Link
                   href="/admin/appointments"
                   className="topbar-link"
@@ -102,11 +140,7 @@ export default function MobileTopbarMenu({
                   Appuntamenti
                 </Link>
               </>
-            ) : (
-              <Link href="/client" className="topbar-link" aria-label="Area Clienti" title="Area Clienti" onClick={closeMenu}>
-                Area clienti
-              </Link>
-            )
+            ) : null
           ) : null}
         </nav>
       </details>

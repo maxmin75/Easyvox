@@ -9,6 +9,7 @@ export type ResolvedTenant = {
   slug: string;
   ownerId: string | null;
   requireUserAuthForChat: boolean;
+  isSuspended: boolean;
 };
 
 export async function resolveTenantFromRequest(request: NextRequest): Promise<ResolvedTenant | null> {
@@ -24,7 +25,7 @@ export async function resolveTenantFromRequest(request: NextRequest): Promise<Re
   if (clientId && isValidUuid(clientId)) {
     const tenant = await prismaAdmin.client.findUnique({
       where: { id: clientId },
-      select: { id: true, slug: true, ownerId: true, requireUserAuthForChat: true },
+      select: { id: true, slug: true, ownerId: true, requireUserAuthForChat: true, isSuspended: true },
     });
     return tenant;
   }
@@ -34,7 +35,7 @@ export async function resolveTenantFromRequest(request: NextRequest): Promise<Re
 
   const tenant = await prismaAdmin.client.findUnique({
     where: { slug: clientSlug },
-    select: { id: true, slug: true, ownerId: true, requireUserAuthForChat: true },
+    select: { id: true, slug: true, ownerId: true, requireUserAuthForChat: true, isSuspended: true },
   });
   return tenant;
 }

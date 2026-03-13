@@ -1,18 +1,56 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
+import {
+  CHAT_ACCESS_PROFILE_COOKIE,
+  getCompactChatAccessDisplayName,
+  parseChatAccessProfileCookieValue,
+} from "@/lib/chat-access-profile";
 
 type TopbarAuthActionProps = {
   isAuthenticated: boolean;
+  recognizedName?: string | null;
   className?: string;
 };
 
-export default function TopbarAuthAction({ isAuthenticated, className }: TopbarAuthActionProps) {
+function readRecognizedNameFromCookie() {
+  if (typeof document === "undefined") return null;
+  const cookieEntry = document.cookie
+    .split("; ")
+    .find((entry) => entry.startsWith(`${CHAT_ACCESS_PROFILE_COOKIE}=`));
+  const parsedProfile = parseChatAccessProfileCookieValue(cookieEntry?.split("=")[1] ?? null);
+  return getCompactChatAccessDisplayName(parsedProfile?.name, parsedProfile?.email);
+}
+
+export default function TopbarAuthAction({
+  isAuthenticated,
+  recognizedName,
+  className,
+}: TopbarAuthActionProps) {
   const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [chatDisplayName, setChatDisplayName] = useState(recognizedName ?? null);
+
+  useEffect(() => {
+    setChatDisplayName(recognizedName ?? null);
+  }, [recognizedName]);
+
+  useEffect(() => {
+    if (isAuthenticated) return;
+
+    const syncRecognizedName = () => {
+      setChatDisplayName(readRecognizedNameFromCookie());
+    };
+
+    syncRecognizedName();
+    window.addEventListener("easyvox:chat-profile-updated", syncRecognizedName);
+    return () => {
+      window.removeEventListener("easyvox:chat-profile-updated", syncRecognizedName);
+    };
+  }, [isAuthenticated]);
 
   async function onLogout() {
     if (isLoggingOut) return;
@@ -29,6 +67,19 @@ export default function TopbarAuthAction({ isAuthenticated, className }: TopbarA
   }
 
   if (!isAuthenticated) {
+    if (chatDisplayName) {
+      return (
+        <Link
+          href="/demo"
+          className={className ?? "topbar-link topbar-link-accent"}
+          aria-label={`Utente chat ${chatDisplayName}`}
+          title={chatDisplayName}
+        >
+          {chatDisplayName}
+        </Link>
+      );
+    }
+
     return (
       <Link
         href="/login"

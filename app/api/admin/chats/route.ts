@@ -48,6 +48,17 @@ type SessionAggregate = {
     website: string | null;
     createdAt: string;
   }>;
+  quotes: Array<{
+    id: string;
+    customerName: string;
+    company: string;
+    email: string;
+    phone: string;
+    support: string;
+    aiType: string;
+    training: string;
+    createdAt: string;
+  }>;
 };
 
 export async function GET(request: NextRequest) {
@@ -120,6 +131,7 @@ export async function GET(request: NextRequest) {
         files: [],
         appointments: [],
         crmContacts: [],
+        quotes: [],
       });
       continue;
     }
@@ -149,7 +161,7 @@ export async function GET(request: NextRequest) {
   const sessionIds = [...new Set(limitedSessions.map((session) => session.sessionId))];
   const limitedClientIds = [...new Set(limitedSessions.map((session) => session.clientId))];
 
-  const [files, appointments, crmContacts] = await Promise.all([
+  const [files, appointments, crmContacts, quotes] = await Promise.all([
     prismaAdmin.fileAsset.findMany({
       where: { clientId: { in: limitedClientIds }, sessionId: { in: sessionIds } },
       orderBy: { createdAt: "desc" },
@@ -191,6 +203,23 @@ export async function GET(request: NextRequest) {
         createdAt: true,
       },
     }),
+    prismaAdmin.quote.findMany({
+      where: { clientId: { in: limitedClientIds }, sessionId: { in: sessionIds } },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        clientId: true,
+        sessionId: true,
+        customerName: true,
+        company: true,
+        email: true,
+        phone: true,
+        support: true,
+        aiType: true,
+        training: true,
+        createdAt: true,
+      },
+    }),
   ]);
 
   const byKey = new Map(limitedSessions.map((session) => [`${session.clientId}:${session.sessionId}`, session]));
@@ -224,6 +253,20 @@ export async function GET(request: NextRequest) {
       phone: contact.phone,
       website: contact.website,
       createdAt: contact.createdAt.toISOString(),
+    });
+  }
+  for (const quote of quotes) {
+    if (!quote.sessionId) continue;
+    byKey.get(`${quote.clientId}:${quote.sessionId}`)?.quotes.push({
+      id: quote.id,
+      customerName: quote.customerName,
+      company: quote.company,
+      email: quote.email,
+      phone: quote.phone,
+      support: quote.support,
+      aiType: quote.aiType,
+      training: quote.training,
+      createdAt: quote.createdAt.toISOString(),
     });
   }
 

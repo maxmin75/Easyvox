@@ -2,56 +2,30 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getProviders, signIn } from "next-auth/react";
+import { BRAND_DOMAIN, BRAND_NAME } from "@/lib/brand";
 
 type Mode = "login" | "register";
-
 type AuthEntryProps = {
   modeLocked?: Mode;
   standalone?: boolean;
+  adminOnly?: boolean;
 };
 
-type SocialProviderId = "google" | "twitter";
-
-const SOCIAL_PROVIDER_LABELS: Record<SocialProviderId, string> = {
-  google: "Google",
-  twitter: "X.com",
-};
-
-export function AuthEntry({ modeLocked, standalone = false }: AuthEntryProps) {
+export function AuthEntry({ modeLocked, standalone = false, adminOnly = false }: AuthEntryProps) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>(modeLocked ?? "login");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
-  const [socialProviders, setSocialProviders] = useState<SocialProviderId[]>([]);
+  const [adminRecoveryMode, setAdminRecoveryMode] = useState(false);
+  const [adminRecoveryEmail, setAdminRecoveryEmail] = useState("");
   const currentMode = modeLocked ?? mode;
 
   useEffect(() => {
-    if (modeLocked) return;
-
-    let isMounted = true;
-    (async () => {
-      try {
-        const providers = await getProviders();
-        const enabled = (["google", "twitter"] as const).filter((providerId) =>
-          Boolean(providers?.[providerId]),
-        );
-        if (isMounted) {
-          setSocialProviders(enabled);
-        }
-      } catch {
-        if (isMounted) {
-          setSocialProviders([]);
-        }
-      }
-    })();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [modeLocked]);
+    if (adminOnly) setMode("login");
+  }, [adminOnly]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -61,7 +35,7 @@ export function AuthEntry({ modeLocked, standalone = false }: AuthEntryProps) {
       const response = await fetch(currentMode === "login" ? "/api/auth/login" : "/api/auth/register", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(currentMode === "login" ? { email, password } : { name, email, password }),
       });
 
       const data = (await response.json()) as { ok?: boolean; error?: string };
@@ -80,28 +54,38 @@ export function AuthEntry({ modeLocked, standalone = false }: AuthEntryProps) {
     }
   }
 
-  async function onSocialLogin(provider: SocialProviderId) {
-    if (modeLocked) return;
-    if (!socialProviders.includes(provider)) {
-      setStatus("Provider social non disponibile. Configura le variabili OAuth in Vercel.");
-      return;
-    }
-    setStatus("");
+  async function onAdminRecoverySubmit(event: FormEvent) {
+    event.preventDefault();
+    setLoading(true);
     try {
-      await signIn(provider, { callbackUrl: "/post-login" });
+      const response = await fetch("/api/auth/admin/forgot-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: adminRecoveryEmail }),
+      });
+      const data = (await response.json()) as { message?: string; error?: string };
+      if (!response.ok) {
+        setStatus(data.error ?? "Recupero password fallito");
+        return;
+      }
+      setStatus(data.message ?? "Se l'email e corretta, riceverai un link di recupero.");
     } catch {
-      setStatus("Errore durante il login social. Controlla configurazione OAuth e callback URL.");
+      setStatus("Errore di rete");
+    } finally {
+      setLoading(false);
     }
   }
 
   const authPanel = (
     <section className="landing-block auth-panel" aria-label="Accesso account">
       <div className="auth-panel-head">
-        <h2>Accedi alla dashboard</h2>
-        <p className="mono">{modeLocked ? "Inserisci le credenziali per continuare." : "Entra oppure crea un account per iniziare."}</p>
+        <h2>Admin</h2>
+        <p className="mono">
+          Area riservata all&apos;amministrazione centrale di EasyVox.
+        </p>
       </div>
 
-      {!modeLocked ? (
+      {!modeLocked && !adminOnly ? (
         <div className="auth-toggle" role="tablist" aria-label="Modalita accesso">
           <button type="button" onClick={() => setMode("login")} className={mode === "login" ? "is-active" : ""}>
             Login
@@ -116,55 +100,92 @@ export function AuthEntry({ modeLocked, standalone = false }: AuthEntryProps) {
         </div>
       ) : null}
 
-      <form onSubmit={onSubmit} className="auth-form">
-        <label>
-          Email
-          <input
-            type="email"
-            required
-            placeholder="name@company.com"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
-        </label>
-        <label>
-          Password
-          <input
-            type="password"
-            required
-            minLength={8}
-            placeholder="Minimum 8 characters"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
-        </label>
-        <button type="submit" disabled={loading} className="auth-submit">
-          {loading ? "Attendere..." : currentMode === "login" ? "Entra in dashboard" : "Crea account"}
-        </button>
-      </form>
-
-      {!modeLocked ? (
-        <div className="auth-social-wrap" aria-label="Accesso social">
-          <p className="mono auth-social-label">oppure continua con</p>
-          <div className="auth-social-grid">
-            {socialProviders.map((providerId) => (
-              <button
-                key={providerId}
-                type="button"
-                className="auth-social-button"
-                onClick={() => onSocialLogin(providerId)}
-              >
-                {SOCIAL_PROVIDER_LABELS[providerId]}
-              </button>
-            ))}
-          </div>
-          {socialProviders.length === 0 ? (
-            <p className="mono auth-status">Login social non disponibile: configura i provider OAuth in produzione.</p>
+      {adminOnly && adminRecoveryMode ? (
+        <form onSubmit={onAdminRecoverySubmit} className="auth-form">
+          <label>
+            Email admin
+            <input
+              type="email"
+              required
+              placeholder="name@company.com"
+              value={adminRecoveryEmail}
+              onChange={(event) => setAdminRecoveryEmail(event.target.value)}
+            />
+          </label>
+          <button type="submit" disabled={loading} className="auth-submit">
+            {loading ? "Attendere..." : "Invia link di recupero"}
+          </button>
+          <button
+            type="button"
+            className="auth-submit"
+            onClick={() => {
+              setAdminRecoveryMode(false);
+              setStatus("");
+            }}
+            style={{ background: "transparent", color: "var(--ink)", borderColor: "var(--line)" }}
+          >
+            Torna al login
+          </button>
+        </form>
+      ) : (
+        <form onSubmit={onSubmit} className="auth-form">
+          {currentMode === "register" ? (
+            <label>
+              Nome
+              <input
+                type="text"
+                required
+                placeholder="Mario Rossi"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
+            </label>
           ) : null}
-        </div>
+          <label>
+            Email
+            <input
+              type="email"
+              required
+              placeholder="name@company.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </label>
+          <label>
+            Password
+            <input
+              type="password"
+              required
+              minLength={8}
+              placeholder="Minimum 8 characters"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </label>
+          <button type="submit" disabled={loading} className="auth-submit">
+            {loading ? "Attendere..." : currentMode === "login" ? "Accedi come Admin" : "Crea account"}
+          </button>
+        </form>
+      )}
+
+      {adminOnly ? (
+        <button
+          type="button"
+          className="topbar-link"
+          style={{ width: "fit-content", background: "transparent" }}
+          onClick={() => {
+            setAdminRecoveryMode((current) => !current);
+            setStatus("");
+            setAdminRecoveryEmail(email || adminRecoveryEmail);
+          }}
+        >
+          {adminRecoveryMode ? "Chiudi recupero password" : "Recupera password"}
+        </button>
       ) : null}
 
-      <p className="mono auth-status">{status || "Dopo l’autenticazione sarai reindirizzato in area Admin."}</p>
+      <p className="mono auth-status">
+        {status || "Dopo l&apos;autenticazione sarai reindirizzato nell&apos;area admin."}
+      </p>
     </section>
   );
 
@@ -180,10 +201,10 @@ export function AuthEntry({ modeLocked, standalone = false }: AuthEntryProps) {
     <main className="container landing">
       <section className="landing-grid">
         <div className="landing-block landing-hero">
-          <p className="landing-kicker">EasyVox Platform</p>
+          <p className="landing-kicker">{BRAND_DOMAIN}</p>
           <h1>Assistenti AI affidabili per team che vogliono risposte chiare, veloci e coerenti.</h1>
           <p className="landing-subcopy">
-            Un’unica piattaforma per knowledge base, monitoraggio qualità e deploy multicanale senza complessità
+            {BRAND_NAME} concentra knowledge base, monitoraggio qualita e deploy multicanale senza complessita
             operativa.
           </p>
           <div className="landing-metrics">

@@ -1,39 +1,10 @@
 import type { NextAuthOptions } from "next-auth";
 import { getServerSession } from "next-auth";
-import Google from "next-auth/providers/google";
-import Twitter from "next-auth/providers/twitter";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prismaAdmin } from "@/lib/prisma-admin";
 
 function buildProviders() {
-  return [
-    process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET
-      ? Google({
-          clientId: process.env.AUTH_GOOGLE_ID,
-          clientSecret: process.env.AUTH_GOOGLE_SECRET,
-          authorization: {
-            params: {
-              scope: "openid email profile",
-            },
-          },
-          profile(profile) {
-            return {
-              id: String(profile.sub),
-              name: profile.name ?? null,
-              email: profile.email ?? null,
-              image: null,
-            };
-          },
-        })
-      : null,
-    process.env.AUTH_TWITTER_ID && process.env.AUTH_TWITTER_SECRET
-      ? Twitter({
-          clientId: process.env.AUTH_TWITTER_ID,
-          clientSecret: process.env.AUTH_TWITTER_SECRET,
-          version: "2.0",
-        })
-      : null,
-  ].filter((provider) => provider !== null);
+  return [];
 }
 
 async function ensureDefaultWorkspace(userId: string, email: string | null | undefined) {
@@ -91,9 +62,6 @@ export const authOptions: NextAuthOptions = {
   session: { strategy: "database" },
   secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
   providers: buildProviders(),
-  pages: {
-    signIn: "/login",
-  },
   callbacks: {
     async session({ session, user }) {
       if (session.user) {

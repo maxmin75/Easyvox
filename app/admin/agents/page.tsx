@@ -8,6 +8,7 @@ type Client = {
   name: string;
   slug: string;
   assistantName: string | null;
+  isSuspended: boolean;
   canTakeAppointments: boolean;
   requireProfiling: boolean;
   requireUserAuthForChat: boolean;
@@ -38,6 +39,7 @@ export default function AdminPage() {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [assistantName, setAssistantName] = useState("");
+  const [isSuspended, setIsSuspended] = useState(false);
   const [canTakeAppointments, setCanTakeAppointments] = useState(true);
   const [requireProfiling, setRequireProfiling] = useState(false);
   const [requireUserAuthForChat, setRequireUserAuthForChat] = useState(false);
@@ -46,6 +48,7 @@ export default function AdminPage() {
   const [editName, setEditName] = useState("");
   const [editSlug, setEditSlug] = useState("");
   const [editAssistantName, setEditAssistantName] = useState("");
+  const [editIsSuspended, setEditIsSuspended] = useState(false);
   const [editCanTakeAppointments, setEditCanTakeAppointments] = useState(true);
   const [editRequireProfiling, setEditRequireProfiling] = useState(false);
   const [editRequireUserAuthForChat, setEditRequireUserAuthForChat] = useState(false);
@@ -76,6 +79,7 @@ export default function AdminPage() {
           setEditName(data[0].name);
           setEditSlug(data[0].slug);
           setEditAssistantName(data[0].assistantName ?? "");
+          setEditIsSuspended(data[0].isSuspended ?? false);
           setEditCanTakeAppointments(data[0].canTakeAppointments ?? true);
           setEditRequireProfiling(data[0].requireProfiling ?? false);
           setEditRequireUserAuthForChat(data[0].requireUserAuthForChat ?? false);
@@ -127,6 +131,7 @@ export default function AdminPage() {
       setEditName(first.name);
       setEditSlug(first.slug);
       setEditAssistantName(first.assistantName ?? "");
+      setEditIsSuspended(first.isSuspended ?? false);
       setEditCanTakeAppointments(first.canTakeAppointments ?? true);
       setEditRequireProfiling(first.requireProfiling ?? false);
       setEditRequireUserAuthForChat(first.requireUserAuthForChat ?? false);
@@ -145,6 +150,7 @@ export default function AdminPage() {
         name,
         slug,
         assistantName: assistantName.trim() || undefined,
+        isSuspended,
         canTakeAppointments,
         requireProfiling,
         requireUserAuthForChat,
@@ -162,6 +168,7 @@ export default function AdminPage() {
     setName("");
     setSlug("");
     setAssistantName("");
+    setIsSuspended(false);
     setCanTakeAppointments(true);
     setRequireProfiling(false);
     setRequireUserAuthForChat(false);
@@ -177,6 +184,7 @@ export default function AdminPage() {
     setEditName(client.name);
     setEditSlug(client.slug);
     setEditAssistantName(client.assistantName ?? "");
+    setEditIsSuspended(client.isSuspended ?? false);
     setEditCanTakeAppointments(client.canTakeAppointments ?? true);
     setEditRequireProfiling(client.requireProfiling ?? false);
     setEditRequireUserAuthForChat(client.requireUserAuthForChat ?? false);
@@ -205,6 +213,7 @@ export default function AdminPage() {
           name: editName,
           slug: editSlug,
           assistantName: editAssistantName.trim() || undefined,
+          isSuspended: editIsSuspended,
           canTakeAppointments: editCanTakeAppointments,
           requireProfiling: editRequireProfiling,
           requireUserAuthForChat: editRequireUserAuthForChat,
@@ -246,6 +255,7 @@ export default function AdminPage() {
       setEditName("");
       setEditSlug("");
       setEditAssistantName("");
+      setEditIsSuspended(false);
       setEditCanTakeAppointments(true);
       setEditRequireProfiling(false);
       setEditRequireUserAuthForChat(false);
@@ -302,7 +312,7 @@ export default function AdminPage() {
       const data = (raw ? JSON.parse(raw) : {}) as {
         documentId?: string;
         chunkCount?: number;
-        provider?: "openai" | "ollama";
+        provider?: "openai" | "ollama" | "local";
         error?: string;
       };
 
@@ -506,6 +516,14 @@ export default function AdminPage() {
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
               <input
                 type="checkbox"
+                checked={isSuspended}
+                onChange={(event) => setIsSuspended(event.target.checked)}
+              />
+              Sospendi tenant
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+              <input
+                type="checkbox"
                 checked={canTakeAppointments}
                 onChange={(event) => setCanTakeAppointments(event.target.checked)}
               />
@@ -587,6 +605,14 @@ export default function AdminPage() {
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
               <input
                 type="checkbox"
+                checked={editIsSuspended}
+                onChange={(event) => setEditIsSuspended(event.target.checked)}
+              />
+              Sospendi tenant
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+              <input
+                type="checkbox"
                 checked={editCanTakeAppointments}
                 onChange={(event) => setEditCanTakeAppointments(event.target.checked)}
               />
@@ -660,6 +686,7 @@ export default function AdminPage() {
             {clients.map((client) => (
               <option key={client.id} value={client.id}>
                 {client.name} ({client.slug})
+                {client.isSuspended ? " - sospeso" : ""}
               </option>
             ))}
           </select>
@@ -757,6 +784,9 @@ export default function AdminPage() {
               <p style={{ margin: 0, color: "var(--muted)" }}>slug: {client.slug}</p>
               <p style={{ margin: 0, color: "var(--muted)" }}>
                 assistant: {client.assistantName?.trim() || "Assistant"}
+              </p>
+              <p style={{ margin: 0, color: "var(--muted)" }}>
+                stato tenant: {client.isSuspended ? "sospeso" : "attivo"}
               </p>
               <p style={{ margin: 0, color: "var(--muted)" }}>
                 appuntamenti chat: {client.canTakeAppointments ? "abilitati" : "disabilitati"}

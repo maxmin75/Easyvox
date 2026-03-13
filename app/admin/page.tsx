@@ -5,14 +5,12 @@ import { useEffect, useState } from "react";
 
 export default function AdminHomePage() {
   const [userEmail, setUserEmail] = useState("");
-  const [isEasyVoxAdmin, setIsEasyVoxAdmin] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/me")
       .then((response) => response.json())
-      .then((data: { user?: { email?: string } | null; isEasyVoxAdmin?: boolean }) => {
+      .then((data: { user?: { email?: string } | null }) => {
         if (data.user?.email) setUserEmail(data.user.email);
-        setIsEasyVoxAdmin(Boolean(data.isEasyVoxAdmin));
       })
       .catch(() => null);
   }, []);
@@ -54,7 +52,7 @@ export default function AdminHomePage() {
           <Link href="/admin/control-center" style={cardLinkStyle}>
             <strong>Control Center</strong>
             <span className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>
-              Utenti registrati, acquisti, ingressi alle aree cliente
+              Utenti registrati, acquisti, accessi chat e stato delle installazioni
             </span>
           </Link>
 
@@ -64,16 +62,18 @@ export default function AdminHomePage() {
               LLM/AI, Email, Calendari, API
             </span>
           </Link>
-          {!isEasyVoxAdmin ? (
-            <span className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>
-              Alcune aree globali sono riservate all&apos;amministratore EasyVox.
-            </span>
-          ) : null}
 
           <Link href="/admin/agents" style={cardLinkStyle}>
             <strong>Assistenti / Agenti</strong>
             <span className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>
               Creazione, gestione, knowledge base e configurazione per ogni agente
+            </span>
+          </Link>
+
+          <Link href="/admin/catalog" style={cardLinkStyle}>
+            <strong>Catalogo Backend</strong>
+            <span className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>
+              Gestione prodotti con immagini, anteprima, JSON AI e scheda completa lato chat
             </span>
           </Link>
         </div>
@@ -84,10 +84,13 @@ export default function AdminHomePage() {
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <Link href="/admin/email" style={quickLinkStyle}>Email</Link>
           <Link href="/admin/appointments" style={quickLinkStyle}>Calendari</Link>
+          <Link href="/admin/quotes" style={quickLinkStyle}>Preventivi</Link>
           <Link href="/admin/crm" style={quickLinkStyle}>CRM</Link>
           <Link href="/admin/chats" style={quickLinkStyle}>Chat</Link>
           <Link href="/admin/metrics" style={quickLinkStyle}>Metriche</Link>
-          {isEasyVoxAdmin ? <Link href="/admin/control-center" style={quickLinkStyle}>Control Center Globale</Link> : null}
+          <Link href="/admin/catalog" style={quickLinkStyle}>Catalogo</Link>
+          <Link href="/admin/products" style={quickLinkStyle}>Prodotti</Link>
+          <Link href="/admin/control-center" style={quickLinkStyle}>Control Center</Link>
         </div>
       </section>
     </main>

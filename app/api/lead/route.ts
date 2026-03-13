@@ -8,9 +8,14 @@ export const runtime = "nodejs";
 const schema = z.object({
   sessionId: z.string().min(3).max(200).optional(),
   name: z.string().min(1).max(120),
+  firstName: z.string().min(1).max(120).optional(),
+  lastName: z.string().min(1).max(120).optional(),
   email: z.string().email().optional(),
   phone: z.string().min(5).max(40).optional(),
   website: z.string().url().max(300).optional(),
+  productInterest: z.string().max(160).optional(),
+  interestType: z.string().max(120).optional(),
+  city: z.string().max(120).optional(),
   message: z.string().max(2000).optional(),
 }).refine((data) => Boolean(data.email || data.phone || data.website), {
   message: "Inserisci almeno email, telefono o sito web",

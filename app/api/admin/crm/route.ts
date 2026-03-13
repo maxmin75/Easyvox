@@ -16,9 +16,14 @@ type ContactAggregate = {
   clientName: string;
   clientSlug: string;
   name: string;
+  firstName: string | null;
+  lastName: string | null;
   email: string | null;
   phone: string | null;
   website: string | null;
+  productInterest: string | null;
+  interestType: string | null;
+  city: string | null;
   lastMessage: string | null;
   interactionCount: number;
   sessionsCount: number;
@@ -77,9 +82,14 @@ export async function GET(request: NextRequest) {
       clientId: true,
       sessionId: true,
       name: true,
+      firstName: true,
+      lastName: true,
       email: true,
       phone: true,
       website: true,
+      productInterest: true,
+      interestType: true,
+      city: true,
       message: true,
       createdAt: true,
     },
@@ -102,9 +112,14 @@ export async function GET(request: NextRequest) {
         clientName: client.name,
         clientSlug: client.slug,
         name: lead.name,
+        firstName: lead.firstName,
+        lastName: lead.lastName,
         email: lead.email,
         phone: lead.phone,
         website: lead.website,
+        productInterest: lead.productInterest,
+        interestType: lead.interestType,
+        city: lead.city,
         lastMessage: lead.message ?? null,
         interactionCount: 1,
         sessionsCount: lead.sessionId ? 1 : 0,
@@ -124,9 +139,14 @@ export async function GET(request: NextRequest) {
     }
     if (createdAtIso < current.firstInteractionAt) current.firstInteractionAt = createdAtIso;
 
+    if (!current.firstName && lead.firstName) current.firstName = lead.firstName;
+    if (!current.lastName && lead.lastName) current.lastName = lead.lastName;
     if (!current.email && lead.email) current.email = lead.email;
     if (!current.phone && lead.phone) current.phone = lead.phone;
     if (!current.website && lead.website) current.website = lead.website;
+    if (!current.productInterest && lead.productInterest) current.productInterest = lead.productInterest;
+    if (!current.interestType && lead.interestType) current.interestType = lead.interestType;
+    if (!current.city && lead.city) current.city = lead.city;
   }
 
   const contacts: ContactAggregate[] = [];
@@ -136,9 +156,14 @@ export async function GET(request: NextRequest) {
       clientName: aggregate.clientName,
       clientSlug: aggregate.clientSlug,
       name: aggregate.name,
+      firstName: aggregate.firstName,
+      lastName: aggregate.lastName,
       email: aggregate.email,
       phone: aggregate.phone,
       website: aggregate.website,
+      productInterest: aggregate.productInterest,
+      interestType: aggregate.interestType,
+      city: aggregate.city,
       lastMessage: aggregate.lastMessage,
       interactionCount: aggregate.interactionCount,
       sessionsCount: aggregate.sessionsCount,

@@ -12,6 +12,7 @@ const createSchema = z.object({
   name: z.string().min(2).max(120),
   slug: z.string().min(2).max(80).regex(/^[a-z0-9-]+$/),
   assistantName: z.string().min(2).max(80).optional(),
+  isSuspended: z.boolean().optional(),
   canTakeAppointments: z.boolean().optional(),
   requireProfiling: z.boolean().optional(),
   requireUserAuthForChat: z.boolean().optional(),

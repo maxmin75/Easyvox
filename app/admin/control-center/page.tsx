@@ -277,7 +277,7 @@ export default function AdminControlCenterPage() {
                     Ripara/Forma agente
                   </Link>
                   <Link href={client.quickLinks.demoChat} style={linkStyle} target="_blank">
-                    Entra area cliente (chat)
+                    Apri chat pubblica
                   </Link>
                 </div>
               </article>

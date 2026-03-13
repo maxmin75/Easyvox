@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
+import { BRAND_URL } from "@/lib/brand";
+
+const MAX_SYSTEM_PROMPT_CHARS = 40000;
 
 type AdminSettingsResponse = {
   settings: {
-    aiProvider: "openai" | "ollama";
+    aiProvider: "openai" | "ollama" | "local";
     hasOpenaiApiKey: boolean;
     openaiChatModel: string;
     openaiEmbeddingModel: string;
@@ -33,13 +36,14 @@ export default function SystemSettingsPage() {
   const [userEmail, setUserEmail] = useState("");
   const [isEasyVoxAdmin, setIsEasyVoxAdmin] = useState(false);
   const [status, setStatus] = useState<string>("");
+  const [savingSettings, setSavingSettings] = useState(false);
 
-  const [aiProvider, setAiProvider] = useState<"openai" | "ollama">("ollama");
+  const [aiProvider, setAiProvider] = useState<"openai" | "ollama" | "local">("ollama");
   const [openaiApiKey, setOpenaiApiKey] = useState("");
   const [openaiChatModel, setOpenaiChatModel] = useState("gpt-4o-mini");
   const [openaiEmbeddingModel, setOpenaiEmbeddingModel] = useState("text-embedding-3-small");
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState("http://localhost:11434");
-  const [ollamaChatModel, setOllamaChatModel] = useState("qwen2.5:7b");
+  const [ollamaChatModel, setOllamaChatModel] = useState("qwen3.5:0.8b");
   const [ollamaEmbeddingModel, setOllamaEmbeddingModel] = useState("nomic-embed-text");
   const [appBaseUrl, setAppBaseUrl] = useState("");
   const [easyvoxSystemPrompt, setEasyvoxSystemPrompt] = useState("");
@@ -92,34 +96,50 @@ export default function SystemSettingsPage() {
       setStatus("Permesso negato: solo admin EasyVox.");
       return;
     }
+    setSavingSettings(true);
+    try {
+      const normalizedOllamaBaseUrl = normalizeUrlInput(ollamaBaseUrl);
+      const normalizedAppBaseUrl = normalizeUrlInput(appBaseUrl);
+      const response = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          aiProvider,
+          openaiApiKey: openaiApiKey.trim() || undefined,
+          openaiChatModel,
+          openaiEmbeddingModel,
+          ollamaBaseUrl: normalizedOllamaBaseUrl,
+          ollamaChatModel,
+          ollamaEmbeddingModel,
+          appBaseUrl: normalizedAppBaseUrl,
+          easyvoxSystemPrompt: easyvoxSystemPrompt.trim() || null,
+        }),
+      });
 
-    const response = await fetch("/api/admin/settings", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        aiProvider,
-        openaiApiKey: openaiApiKey.trim() || undefined,
-        openaiChatModel,
-        openaiEmbeddingModel,
-        ollamaBaseUrl: ollamaBaseUrl.trim() || undefined,
-        ollamaChatModel,
-        ollamaEmbeddingModel,
-        appBaseUrl: appBaseUrl.trim() || undefined,
-        easyvoxSystemPrompt: easyvoxSystemPrompt.trim() || undefined,
-      }),
-    });
+      const data = (await response.json().catch(() => ({}))) as AdminSettingsResponse;
+      if (!response.ok) {
+        setStatus(data.error ?? "Errore nel salvataggio impostazioni");
+        return;
+      }
 
-    const data = (await response.json()) as AdminSettingsResponse;
-    if (!response.ok) {
-      setStatus(data.error ?? "Errore nel salvataggio impostazioni");
-      return;
+      setAiProvider(data.settings.aiProvider);
+      setOpenaiApiKey("");
+      setOpenaiChatModel(data.settings.openaiChatModel);
+      setOpenaiEmbeddingModel(data.settings.openaiEmbeddingModel);
+      setOllamaBaseUrl(data.settings.ollamaBaseUrl ?? "http://localhost:11434");
+      setOllamaChatModel(data.settings.ollamaChatModel);
+      setOllamaEmbeddingModel(data.settings.ollamaEmbeddingModel);
+      setAppBaseUrl(data.settings.appBaseUrl ?? "");
+      setEasyvoxSystemPrompt(data.settings.easyvoxSystemPrompt ?? "");
+      setHasOpenaiApiKey(data.settings.hasOpenaiApiKey);
+      setBlobConfigured(data.settings.blobConfigured);
+      setEnvOverrides(data.envOverrides);
+      setStatus("Impostazioni di sistema salvate");
+    } catch {
+      setStatus("Errore di rete nel salvataggio impostazioni");
+    } finally {
+      setSavingSettings(false);
     }
-
-    setOpenaiApiKey("");
-    setHasOpenaiApiKey(data.settings.hasOpenaiApiKey);
-    setBlobConfigured(data.settings.blobConfigured);
-    setEnvOverrides(data.envOverrides);
-    setStatus("Impostazioni di sistema salvate");
   }
 
   async function logout() {
@@ -156,15 +176,16 @@ export default function SystemSettingsPage() {
       <section className="card" style={{ padding: 16, display: "grid", gap: 12, opacity: isEasyVoxAdmin ? 1 : 0.5 }}>
         <h2 style={{ margin: 0, fontSize: 20 }}>LLM / AI</h2>
         <p className="mono" style={{ margin: 0, fontSize: 12, color: "var(--muted)" }}>
-          ENV ha priorita su DB. Per provider Ollama imposta base URL e modelli.
+          ENV ha priorita su DB. Per usare Ollama locale da Vercel imposta qui un URL Cloudflare pubblico.
         </p>
         <form onSubmit={saveSettings} style={{ display: "grid", gap: 10 }}>
           <select
             value={aiProvider}
-            onChange={(event) => setAiProvider(event.target.value as "openai" | "ollama")}
+            onChange={(event) => setAiProvider(event.target.value as "openai" | "ollama" | "local")}
             style={inputStyle}
           >
             <option value="ollama">Ollama</option>
+            <option value="local">Local fine-tuned</option>
             <option value="openai">OpenAI</option>
           </select>
 
@@ -218,19 +239,36 @@ export default function SystemSettingsPage() {
 
           <input
             type="url"
-            placeholder="APP_BASE_URL (es. https://easyvox.vercel.app)"
+            placeholder={`APP_BASE_URL (es. ${BRAND_URL})`}
             value={appBaseUrl}
             onChange={(event) => setAppBaseUrl(event.target.value)}
             style={inputStyle}
           />
           <textarea
+            id="easyvox-system-prompt"
             placeholder="Prompt di sistema EasyVox (chat senza tenant)"
             value={easyvoxSystemPrompt}
             onChange={(event) => setEasyvoxSystemPrompt(event.target.value)}
             rows={5}
+            maxLength={MAX_SYSTEM_PROMPT_CHARS}
             style={{ ...inputStyle, resize: "vertical" }}
           />
-          <button type="submit" style={buttonPrimary} disabled={!isEasyVoxAdmin}>Salva impostazioni AI/API</button>
+          <div
+            className="mono"
+            style={{
+              justifySelf: "end",
+              fontSize: 11,
+              color: easyvoxSystemPrompt.length > MAX_SYSTEM_PROMPT_CHARS * 0.9 ? "#b54708" : "var(--muted)",
+            }}
+          >
+            {easyvoxSystemPrompt.length.toLocaleString("it-IT")} / {MAX_SYSTEM_PROMPT_CHARS.toLocaleString("it-IT")} caratteri
+          </div>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <button type="submit" style={buttonPrimary} disabled={!isEasyVoxAdmin || savingSettings}>
+              {savingSettings ? "Salvataggio..." : "Salva impostazioni AI/API"}
+            </button>
+            {savingSettings ? <span className="inline-spinner" aria-hidden="true" /> : null}
+          </div>
         </form>
       </section>
 
@@ -283,3 +321,10 @@ const linkNeutral = {
   textDecoration: "none",
   color: "inherit",
 } as const;
+
+function normalizeUrlInput(raw: string): string | undefined {
+  const value = raw.trim();
+  if (!value) return undefined;
+  if (/^https?:\/\//i.test(value)) return value;
+  return `http://${value}`;
+}

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { applySessionCookie, createAuthSession, verifyPassword } from "@/lib/auth";
 import { prismaAdmin } from "@/lib/prisma-admin";
 import { getTenantAccess, resolveTenantFromRequest, touchTenantMembership } from "@/lib/tenant-users";
+import { sendChatAccessNotificationEmail } from "@/lib/email/chat-access";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,9 @@ export async function POST(request: NextRequest) {
   if (!tenant) {
     return NextResponse.json({ error: "Tenant non trovato" }, { status: 404 });
   }
+  if (tenant.isSuspended) {
+    return NextResponse.json({ error: "Tenant sospeso. Accesso chat temporaneamente disabilitato." }, { status: 423 });
+  }
 
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
@@ -28,12 +32,20 @@ export async function POST(request: NextRequest) {
     select: {
       id: true,
       email: true,
+      name: true,
+      emailVerified: true,
       passwordHash: true,
     },
   });
 
   if (!user || !verifyPassword(parsed.data.password, user.passwordHash)) {
     return NextResponse.json({ error: "Credenziali non valide" }, { status: 401 });
+  }
+  if (!user.emailVerified) {
+    return NextResponse.json(
+      { error: "Devi confermare la tua email prima di accedere alla chat." },
+      { status: 403 },
+    );
   }
 
   const access = await getTenantAccess(tenant.id, user.id);
@@ -42,6 +54,19 @@ export async function POST(request: NextRequest) {
   }
 
   await touchTenantMembership(tenant.id, user.id, access.isOwner);
+  void sendChatAccessNotificationEmail({
+    customerName: user.name?.trim() || user.email.split("@")[0] || "Utente chat",
+    customerEmail: user.email,
+    accessedAt: new Date(),
+    tenantSlug: tenant.slug,
+    source: "login",
+  }).catch((error) => {
+    console.error("chat_access_login_notification_failed", {
+      email: user.email,
+      tenantSlug: tenant.slug,
+      error: error instanceof Error ? error.message : "unknown_error",
+    });
+  });
   const token = await createAuthSession(user.id);
   const response = NextResponse.json({
     ok: true,

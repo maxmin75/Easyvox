@@ -18,43 +18,39 @@ export async function POST(request: NextRequest) {
   }
 
   const email = parsed.data.email.trim().toLowerCase();
-  let user: { id: string; email: string; passwordHash: string | null; createdAt: Date } | null = null;
+  if (email !== EASYVOX_ADMIN_EMAIL) {
+    return NextResponse.json({ error: "Accesso admin consentito solo all'amministratore del sito" }, { status: 403 });
+  }
 
-  if (email === EASYVOX_ADMIN_EMAIL) {
-    if (parsed.data.password !== EASYVOX_ADMIN_PASSWORD) {
-      return NextResponse.json({ error: "Credenziali non valide" }, { status: 401 });
-    }
+  let user = await prismaAdmin.user.findUnique({
+    where: { email: EASYVOX_ADMIN_EMAIL },
+    select: { id: true, email: true, passwordHash: true, createdAt: true },
+  });
 
-    user = await prismaAdmin.user.findUnique({
-      where: { email: EASYVOX_ADMIN_EMAIL },
+  if (!user) {
+    user = await prismaAdmin.user.create({
+      data: {
+        email: EASYVOX_ADMIN_EMAIL,
+        passwordHash: hashPassword(EASYVOX_ADMIN_PASSWORD),
+      },
       select: { id: true, email: true, passwordHash: true, createdAt: true },
     });
+  }
 
-    if (!user) {
-      user = await prismaAdmin.user.create({
-        data: {
-          email: EASYVOX_ADMIN_EMAIL,
-          passwordHash: hashPassword(EASYVOX_ADMIN_PASSWORD),
-        },
-        select: { id: true, email: true, passwordHash: true, createdAt: true },
-      });
-    }
-
-    if (!verifyPassword(EASYVOX_ADMIN_PASSWORD, user.passwordHash)) {
-      user = await prismaAdmin.user.update({
-        where: { id: user.id },
-        data: { passwordHash: hashPassword(EASYVOX_ADMIN_PASSWORD) },
-        select: { id: true, email: true, passwordHash: true, createdAt: true },
-      });
-    }
-  } else {
-    user = await prismaAdmin.user.findUnique({
-      where: { email },
+  if (!user.passwordHash) {
+    user = await prismaAdmin.user.update({
+      where: { id: user.id },
+      data: { passwordHash: hashPassword(EASYVOX_ADMIN_PASSWORD) },
       select: { id: true, email: true, passwordHash: true, createdAt: true },
     });
-    if (!user || !verifyPassword(parsed.data.password, user.passwordHash)) {
-      return NextResponse.json({ error: "Credenziali non valide" }, { status: 401 });
-    }
+  }
+
+  const storedPasswordMatches = verifyPassword(parsed.data.password, user.passwordHash);
+  const envPasswordMatches = parsed.data.password === EASYVOX_ADMIN_PASSWORD;
+  const storedHashIsEnvPassword = verifyPassword(EASYVOX_ADMIN_PASSWORD, user.passwordHash);
+
+  if (!storedPasswordMatches && !(envPasswordMatches && storedHashIsEnvPassword)) {
+    return NextResponse.json({ error: "Credenziali non valide" }, { status: 401 });
   }
 
   const token = await createAuthSession(user.id);

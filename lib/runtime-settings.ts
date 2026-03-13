@@ -3,6 +3,7 @@ import { prismaAdmin } from "@/lib/prisma-admin";
 import {
   DEFAULT_CHAT_MODEL,
   DEFAULT_EMBEDDING_MODEL,
+  DEFAULT_OPENAI_PROMPT_ID,
   DEFAULT_OLLAMA_CHAT_MODEL,
   DEFAULT_OLLAMA_EMBEDDING_MODEL,
 } from "@/lib/openai";
@@ -12,6 +13,7 @@ type RuntimeSettings = {
   provider: AiProvider;
   openaiApiKey: string | null;
   openaiChatModel: string;
+  openaiPromptId: string | null;
   openaiEmbeddingModel: string;
   ollamaBaseUrl: string | null;
   ollamaChatModel: string;
@@ -23,8 +25,17 @@ type RuntimeSettings = {
 
 function normalizeProvider(value: string | null | undefined): AiProvider | null {
   if (!value) return null;
-  if (value === "openai" || value === "ollama") return value;
+  const normalized = value.trim();
+  if (normalized === "openai" || normalized === "ollama" || normalized === "local") {
+    return normalized;
+  }
   return null;
+}
+
+function normalizeText(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
 }
 
 export async function getRuntimeSettings(): Promise<RuntimeSettings> {
@@ -45,27 +56,34 @@ export async function getRuntimeSettings(): Promise<RuntimeSettings> {
 
   const envProvider = normalizeProvider(process.env.AI_PROVIDER);
   const dbProvider = normalizeProvider(setting?.aiProvider);
-  const resolvedOllamaBaseUrl = process.env.OLLAMA_BASE_URL ?? setting?.ollamaBaseUrl ?? null;
+  const resolvedOllamaBaseUrl =
+    normalizeText(process.env.OLLAMA_BASE_URL) ?? normalizeText(setting?.ollamaBaseUrl);
   const provider = envProvider ?? dbProvider ?? (resolvedOllamaBaseUrl ? "ollama" : "openai");
 
   return {
     provider,
-    openaiApiKey: process.env.OPENAI_API_KEY ?? setting?.openaiApiKey ?? null,
+    openaiApiKey: normalizeText(process.env.OPENAI_API_KEY) ?? normalizeText(setting?.openaiApiKey),
     openaiChatModel:
-      process.env.OPENAI_CHAT_MODEL ?? setting?.openaiChatModel ?? DEFAULT_CHAT_MODEL,
+      normalizeText(process.env.OPENAI_CHAT_MODEL) ??
+      normalizeText(setting?.openaiChatModel) ??
+      DEFAULT_CHAT_MODEL,
+    openaiPromptId:
+      normalizeText(process.env.OPENAI_PROMPT_ID) ?? DEFAULT_OPENAI_PROMPT_ID,
     openaiEmbeddingModel:
-      process.env.OPENAI_EMBEDDING_MODEL ??
-      setting?.openaiEmbeddingModel ??
+      normalizeText(process.env.OPENAI_EMBEDDING_MODEL) ??
+      normalizeText(setting?.openaiEmbeddingModel) ??
       DEFAULT_EMBEDDING_MODEL,
-    ollamaBaseUrl: resolvedOllamaBaseUrl,
+    ollamaBaseUrl: resolvedOllamaBaseUrl ?? null,
     ollamaChatModel:
-      process.env.OLLAMA_CHAT_MODEL ?? setting?.ollamaChatModel ?? DEFAULT_OLLAMA_CHAT_MODEL,
+      normalizeText(process.env.OLLAMA_CHAT_MODEL) ??
+      normalizeText(setting?.ollamaChatModel) ??
+      DEFAULT_OLLAMA_CHAT_MODEL,
     ollamaEmbeddingModel:
-      process.env.OLLAMA_EMBEDDING_MODEL ??
-      setting?.ollamaEmbeddingModel ??
+      normalizeText(process.env.OLLAMA_EMBEDDING_MODEL) ??
+      normalizeText(setting?.ollamaEmbeddingModel) ??
       DEFAULT_OLLAMA_EMBEDDING_MODEL,
-    appBaseUrl: process.env.APP_BASE_URL ?? setting?.appBaseUrl ?? null,
-    easyvoxSystemPrompt: setting?.easyvoxSystemPrompt ?? null,
+    appBaseUrl: normalizeText(process.env.APP_BASE_URL) ?? normalizeText(setting?.appBaseUrl),
+    easyvoxSystemPrompt: normalizeText(setting?.easyvoxSystemPrompt),
     blobConfigured: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
   };
 }
@@ -74,6 +92,7 @@ type RuntimeSettingsOverrides = {
   provider?: AiProvider | null;
   openaiApiKey?: string | null;
   openaiChatModel?: string | null;
+  openaiPromptId?: string | null;
   openaiEmbeddingModel?: string | null;
   ollamaBaseUrl?: string | null;
   ollamaChatModel?: string | null;
@@ -85,12 +104,13 @@ function mergeRuntimeSettings(base: RuntimeSettings, overrides: RuntimeSettingsO
   return {
     ...base,
     provider,
-    openaiApiKey: overrides.openaiApiKey ?? base.openaiApiKey,
-    openaiChatModel: overrides.openaiChatModel ?? base.openaiChatModel,
-    openaiEmbeddingModel: overrides.openaiEmbeddingModel ?? base.openaiEmbeddingModel,
-    ollamaBaseUrl: overrides.ollamaBaseUrl ?? base.ollamaBaseUrl,
-    ollamaChatModel: overrides.ollamaChatModel ?? base.ollamaChatModel,
-    ollamaEmbeddingModel: overrides.ollamaEmbeddingModel ?? base.ollamaEmbeddingModel,
+    openaiApiKey: normalizeText(overrides.openaiApiKey) ?? base.openaiApiKey,
+    openaiChatModel: normalizeText(overrides.openaiChatModel) ?? base.openaiChatModel,
+    openaiPromptId: normalizeText(overrides.openaiPromptId) ?? base.openaiPromptId,
+    openaiEmbeddingModel: normalizeText(overrides.openaiEmbeddingModel) ?? base.openaiEmbeddingModel,
+    ollamaBaseUrl: normalizeText(overrides.ollamaBaseUrl) ?? base.ollamaBaseUrl,
+    ollamaChatModel: normalizeText(overrides.ollamaChatModel) ?? base.ollamaChatModel,
+    ollamaEmbeddingModel: normalizeText(overrides.ollamaEmbeddingModel) ?? base.ollamaEmbeddingModel,
   };
 }
 
@@ -125,6 +145,7 @@ export async function getRuntimeSettingsForUser(
     provider: normalizeProvider(pref.aiProvider),
     openaiApiKey: pref.openaiApiKey,
     openaiChatModel: pref.openaiChatModel,
+    openaiPromptId: base.openaiPromptId,
     openaiEmbeddingModel: pref.openaiEmbeddingModel,
     ollamaBaseUrl: pref.ollamaBaseUrl,
     ollamaChatModel: pref.ollamaChatModel,
@@ -137,6 +158,7 @@ export function envOverridesRuntimeSettings() {
     aiProvider: Boolean(process.env.AI_PROVIDER),
     openaiApiKey: Boolean(process.env.OPENAI_API_KEY),
     openaiChatModel: Boolean(process.env.OPENAI_CHAT_MODEL),
+    openaiPromptId: Boolean(process.env.OPENAI_PROMPT_ID),
     openaiEmbeddingModel: Boolean(process.env.OPENAI_EMBEDDING_MODEL),
     ollamaBaseUrl: Boolean(process.env.OLLAMA_BASE_URL),
     ollamaChatModel: Boolean(process.env.OLLAMA_CHAT_MODEL),

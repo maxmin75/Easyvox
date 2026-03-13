@@ -7,7 +7,7 @@ import { envOverridesRuntimeSettings, getRuntimeSettings } from "@/lib/runtime-s
 export const runtime = "nodejs";
 
 const settingsSchema = z.object({
-  aiProvider: z.enum(["openai", "ollama"]).optional(),
+  aiProvider: z.enum(["openai", "ollama", "local"]).optional(),
   openaiApiKey: z.string().min(20).optional(),
   clearOpenaiApiKey: z.boolean().optional(),
   openaiChatModel: z.string().min(3).max(80).optional(),
@@ -16,7 +16,7 @@ const settingsSchema = z.object({
   ollamaChatModel: z.string().min(3).max(80).optional(),
   ollamaEmbeddingModel: z.string().min(3).max(80).optional(),
   appBaseUrl: z.string().url().optional(),
-  easyvoxSystemPrompt: z.string().min(10).max(5000).optional(),
+  easyvoxSystemPrompt: z.string().max(40000).nullable().optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -48,7 +48,8 @@ export async function PUT(request: NextRequest) {
 
   const parsed = settingsSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return NextResponse.json({ error: "Payload non valido" }, { status: 400 });
+    const firstIssue = parsed.error.issues[0]?.message ?? "Payload non valido";
+    return NextResponse.json({ error: firstIssue, issues: parsed.error.flatten() }, { status: 400 });
   }
 
   const data = parsed.data;
@@ -79,7 +80,9 @@ export async function PUT(request: NextRequest) {
         ? { ollamaEmbeddingModel: data.ollamaEmbeddingModel }
         : {}),
       ...(data.appBaseUrl ? { appBaseUrl: data.appBaseUrl } : {}),
-      ...(data.easyvoxSystemPrompt ? { easyvoxSystemPrompt: data.easyvoxSystemPrompt } : {}),
+      ...(data.easyvoxSystemPrompt !== undefined
+        ? { easyvoxSystemPrompt: data.easyvoxSystemPrompt }
+        : {}),
     },
   });
 

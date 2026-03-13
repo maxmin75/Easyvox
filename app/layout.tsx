@@ -8,7 +8,14 @@ import TopbarAuthAction from "@/components/TopbarAuthAction";
 import MobileTopbarMenu from "@/components/MobileTopbarMenu";
 import TopbarLogoTypewriter from "@/components/TopbarLogoTypewriter";
 import TopbarSettingsLink from "@/components/TopbarSettingsLink";
-import { isEasyVoxAdminEmail } from "@/lib/admin/access";
+import TopbarUserTicker from "@/components/TopbarUserTicker";
+import { getAccessProfile } from "@/lib/access-profile";
+import {
+  CHAT_ACCESS_PROFILE_COOKIE,
+  getCompactChatAccessDisplayName,
+  parseChatAccessProfileCookieValue,
+} from "@/lib/chat-access-profile";
+import { BRAND_DOMAIN, BRAND_NAME, BRAND_URL } from "@/lib/brand";
 import "./globals.css";
 
 const display = Inter({
@@ -29,8 +36,9 @@ const logo = Jersey_10({
 });
 
 export const metadata: Metadata = {
-  title: "EasyVox, Ai chat Hub",
-  description: "Multi-tenant EasyVox, Ai chat Hub con RAG, widget embeddabile e dashboard admin.",
+  metadataBase: new URL(BRAND_URL),
+  title: `${BRAND_NAME} | ${BRAND_DOMAIN}`,
+  description: `${BRAND_NAME} e la piattaforma chat AI con gestione centralizzata, widget embeddabile e dashboard admin.`,
 };
 
 export default async function RootLayout({
@@ -41,8 +49,16 @@ export default async function RootLayout({
   const cookieStore = await cookies();
   const token = cookieStore.get(authCookieName)?.value ?? null;
   const authUser = (await getAuthUserFromToken(token)) ?? (await getAuthUserFromNextAuthSession());
-  const isAdmin = Boolean(authUser && isEasyVoxAdminEmail(authUser.email));
-  const settingsHref = authUser ? (isAdmin ? "/admin/system-settings" : "/client/profile-settings") : null;
+  const recognizedChatProfile = parseChatAccessProfileCookieValue(
+    cookieStore.get(CHAT_ACCESS_PROFILE_COOKIE)?.value ?? null,
+  );
+  const recognizedChatName = getCompactChatAccessDisplayName(
+    recognizedChatProfile?.name,
+    recognizedChatProfile?.email,
+  );
+  const accessProfile = authUser ? await getAccessProfile(authUser) : null;
+  const isAdmin = accessProfile?.isEasyVoxAdmin ?? false;
+  const settingsHref = authUser && isAdmin ? "/admin/system-settings" : null;
   const activeAgents = authUser
     ? prismaAdmin.client.findMany({
         where: { ownerId: authUser.id },
@@ -54,8 +70,8 @@ export default async function RootLayout({
   const renderTopbarNav = (className?: string) => (
     <nav className={className ? `topbar-nav ${className}` : "topbar-nav"} aria-label="Aree progetto">
       <div className="topbar-dropdown">
-        <Link href="/demo" className="topbar-link" aria-label="Easyvox chat" title="Easyvox chat">
-          Easyvox chat
+        <Link href="/demo" className="topbar-link" aria-label="Vox" title="Vox">
+          Vox
           <span className="topbar-caret" aria-hidden="true">
             ▾
           </span>
@@ -63,7 +79,7 @@ export default async function RootLayout({
         <div className="topbar-menu" role="menu" aria-label="Agenti attivi">
           <p className="topbar-menu-title">Seleziona agente per test</p>
           <Link href="/demo" className="topbar-menu-item">
-            Easyvox chat
+            Vox
           </Link>
           {resolvedAgents.length > 0 ? (
             resolvedAgents.map((agent) => (
@@ -76,6 +92,9 @@ export default async function RootLayout({
           )}
         </div>
       </div>
+      <Link href="/login?tab=admin" className="topbar-link" aria-label="Admin" title="Admin">
+        Admin
+      </Link>
       {authUser ? (
         isAdmin ? (
           <>
@@ -97,11 +116,7 @@ export default async function RootLayout({
               Appuntamenti
             </Link>
           </>
-        ) : (
-          <Link href="/client" className="topbar-link" aria-label="Area Clienti" title="Area Clienti">
-            Area clienti
-          </Link>
-        )
+        ) : null
       ) : null}
     </nav>
   );
@@ -120,11 +135,12 @@ export default async function RootLayout({
                 {settingsHref ? <TopbarSettingsLink href={settingsHref} /> : null}
                 <TopbarAuthAction
                   isAuthenticated={Boolean(authUser)}
+                  recognizedName={recognizedChatName}
                   className="topbar-auth topbar-auth-ghost topbar-auth-desktop-small"
                 />
                 {!authUser ? (
-                  <Link href="/login" className="topbar-auth topbar-auth-solid topbar-auth-desktop-small">
-                    Start for Free
+                  <Link href="/login?tab=admin" className="topbar-auth topbar-auth-solid topbar-auth-desktop-small">
+                    Admin
                   </Link>
                 ) : null}
               </div>
@@ -133,7 +149,11 @@ export default async function RootLayout({
                 isAdmin={isAdmin}
                 agents={resolvedAgents}
                 settingsHref={settingsHref}
+                recognizedName={recognizedChatName}
               />
+            </div>
+            <div className="topbar-ribbon-row">
+              <TopbarUserTicker />
             </div>
           </div>
         </header>

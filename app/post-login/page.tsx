@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { authCookieName, getAuthUserFromNextAuthSession, getAuthUserFromToken } from "@/lib/auth";
-import { isEasyVoxAdminEmail } from "@/lib/admin/access";
+import { getAccessProfile } from "@/lib/access-profile";
 
 export default async function PostLoginPage() {
   const cookieStore = await cookies();
@@ -12,5 +12,6 @@ export default async function PostLoginPage() {
     redirect("/login");
   }
 
-  redirect(isEasyVoxAdminEmail(user.email) ? "/admin" : "/client");
+  const profile = await getAccessProfile(user);
+  redirect(profile.isEasyVoxAdmin ? "/admin" : "/");
 }

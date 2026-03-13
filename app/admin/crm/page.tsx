@@ -13,9 +13,14 @@ type CrmContact = {
   clientName: string;
   clientSlug: string;
   name: string;
+  firstName: string | null;
+  lastName: string | null;
   email: string | null;
   phone: string | null;
   website: string | null;
+  productInterest: string | null;
+  interestType: string | null;
+  city: string | null;
   lastMessage: string | null;
   interactionCount: number;
   sessionsCount: number;
@@ -34,22 +39,60 @@ export default function AdminCrmPage() {
   const [selectedClientId, setSelectedClientId] = useState("");
   const [contacts, setContacts] = useState<CrmContact[]>([]);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState("Carica il CRM.");
+  const [status, setStatus] = useState("Caricamento CRM globale...");
 
   useEffect(() => {
-    void loadClients();
+    // Initial CRM view should open already populated in global mode.
+    void loadInitialData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadClients() {
+    const response = await fetch("/api/admin/clients");
+    const data = (await response.json()) as Client[] & { error?: string };
+    if (!response.ok) {
+      throw new Error(data.error ?? "Errore caricamento agenti");
+    }
+    setClients(data);
+    return data;
+  }
+
+  async function loadCrm(clientId?: string) {
+    const params = new URLSearchParams();
+    if (clientId) params.set("clientId", clientId);
+
+    const response = await fetch(`/api/admin/crm${params.toString() ? `?${params.toString()}` : ""}`);
+    const data = (await response.json()) as CrmResponse;
+
+    if (!response.ok) {
+      throw new Error(data.error ?? "Errore caricamento CRM");
+    }
+
+    setContacts(data.contacts ?? []);
+    setStatus(data.filters.clientId ? "CRM filtrato per agente" : "CRM globale caricato");
+    return data;
+  }
+
+  async function loadInitialData() {
     setLoading(true);
     try {
-      const response = await fetch("/api/admin/clients");
-      const data = (await response.json()) as Client[] & { error?: string };
-      if (!response.ok) {
-        setStatus(data.error ?? "Errore caricamento agenti");
-        return;
-      }
-      setClients(data);
+      const [loadedClients, loadedCrm] = await Promise.all([loadClients(), loadCrm()]);
+      setStatus(
+        loadedCrm.contacts.length > 0
+          ? `CRM globale caricato. Contatti visibili: ${loadedCrm.contacts.length}. Agenti disponibili: ${loadedClients.length}`
+          : `CRM globale caricato. Nessun contatto trovato. Agenti disponibili: ${loadedClients.length}`,
+      );
+    } catch {
+      setStatus("Errore di rete durante caricamento CRM");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function refreshClients() {
+    setLoading(true);
+    try {
+      const data = await loadClients();
       setStatus(`Agenti disponibili: ${data.length}`);
     } catch {
       setStatus("Errore di rete durante caricamento agenti");
@@ -58,22 +101,10 @@ export default function AdminCrmPage() {
     }
   }
 
-  async function loadCrm() {
+  async function refreshCrm() {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (selectedClientId) params.set("clientId", selectedClientId);
-
-      const response = await fetch(`/api/admin/crm${params.toString() ? `?${params.toString()}` : ""}`);
-      const data = (await response.json()) as CrmResponse;
-
-      if (!response.ok) {
-        setStatus(data.error ?? "Errore caricamento CRM");
-        return;
-      }
-
-      setContacts(data.contacts ?? []);
-      setStatus(data.filters.clientId ? "CRM filtrato per agente" : "CRM globale caricato");
+      await loadCrm(selectedClientId || undefined);
     } catch {
       setStatus("Errore di rete durante caricamento CRM");
     } finally {
@@ -111,7 +142,7 @@ export default function AdminCrmPage() {
           <button
             type="button"
             disabled={loading}
-            onClick={loadClients}
+            onClick={refreshClients}
             style={{
               width: "fit-content",
               borderRadius: 10,
@@ -126,7 +157,7 @@ export default function AdminCrmPage() {
           <button
             type="button"
             disabled={loading}
-            onClick={loadCrm}
+            onClick={refreshCrm}
             style={{
               width: "fit-content",
               borderRadius: 10,
@@ -153,22 +184,51 @@ export default function AdminCrmPage() {
         </span>
       </section>
 
+      {contacts.length > 0 ? (
+        <section className="card" style={{ padding: 16, display: "grid", gap: 8 }}>
+          <strong>Nomi che stanno interagendo</strong>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {contacts.slice(0, 24).map((contact, index) => (
+              <span
+                key={`${contact.clientId}-${contact.email ?? contact.name}-${index}`}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  borderRadius: 999,
+                  border: "1px solid var(--line)",
+                  background: "rgba(15, 23, 42, 0.04)",
+                  padding: "6px 10px",
+                  fontSize: 12,
+                }}
+              >
+                {contact.name}
+              </span>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {contacts.length === 0 ? (
         <section className="card" style={{ padding: 16 }}>
           <p className="mono" style={{ margin: 0, fontSize: 12, color: "var(--muted)" }}>
-            Nessun contatto CRM disponibile. Premi &quot;Carica CRM&quot;.
+            Nessun contatto CRM disponibile.
           </p>
         </section>
       ) : (
         <section className="card" style={{ padding: 16, overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1320 }}>
             <thead>
               <tr>
                 {[
                   "Agente",
-                  "Contatto",
+                  "Nome completo",
+                  "Nome",
+                  "Cognome",
                   "Email",
                   "Telefono",
+                  "Prodotto",
+                  "Tipo interesse",
+                  "Citta",
                   "Sito",
                   "Interazioni",
                   "Sessioni",
@@ -200,11 +260,26 @@ export default function AdminCrmPage() {
                   <td style={{ borderBottom: "1px solid var(--line)", padding: "8px 6px", fontSize: 13 }}>
                     {contact.name}
                   </td>
+                  <td style={{ borderBottom: "1px solid var(--line)", padding: "8px 6px", fontSize: 13 }}>
+                    {contact.firstName ?? "-"}
+                  </td>
+                  <td style={{ borderBottom: "1px solid var(--line)", padding: "8px 6px", fontSize: 13 }}>
+                    {contact.lastName ?? "-"}
+                  </td>
                   <td className="mono" style={{ borderBottom: "1px solid var(--line)", padding: "8px 6px", fontSize: 12 }}>
                     {contact.email ?? "-"}
                   </td>
                   <td className="mono" style={{ borderBottom: "1px solid var(--line)", padding: "8px 6px", fontSize: 12 }}>
                     {contact.phone ?? "-"}
+                  </td>
+                  <td style={{ borderBottom: "1px solid var(--line)", padding: "8px 6px", fontSize: 13 }}>
+                    {contact.productInterest ?? "-"}
+                  </td>
+                  <td style={{ borderBottom: "1px solid var(--line)", padding: "8px 6px", fontSize: 13 }}>
+                    {contact.interestType ?? "-"}
+                  </td>
+                  <td style={{ borderBottom: "1px solid var(--line)", padding: "8px 6px", fontSize: 13 }}>
+                    {contact.city ?? "-"}
                   </td>
                   <td className="mono" style={{ borderBottom: "1px solid var(--line)", padding: "8px 6px", fontSize: 12 }}>
                     {contact.website ?? "-"}

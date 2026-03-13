@@ -8,6 +8,16 @@ import { getRuntimeSettings, getRuntimeSettingsForUser } from "@/lib/runtime-set
 import { createEmbeddingWithProvider, completeChatWithProvider } from "@/lib/ai/provider";
 import { retrieveTopChunks } from "@/lib/rag/retrieval";
 import { getTenantAccess, touchTenantMembership } from "@/lib/tenant-users";
+import { sanitizeChatText } from "@/lib/chat-text";
+import {
+  DEFAULT_CLIENT_SYSTEM_PROMPT,
+  DEFAULT_EASYVOX_SYSTEM_PROMPT,
+  EASYVOX_INFO_PROMPT,
+  EASYVOX_PRICING_PROMPT,
+  EASYVOX_QUOTE_PROMPT,
+  EASYVOX_SERVICE_DETAILS_PROMPT,
+} from "@/lib/systemPrompt";
+import { mockProducts } from "@/lib/mockProducts";
 import {
   getPurchaseEmailRuntimeSettings,
   isPurchaseIntentMessage,
@@ -22,7 +32,9 @@ const schema = z.object({
   message: z.string().min(1).max(4000),
   customerName: z.string().trim().min(1).max(120).optional(),
   customerEmail: z.string().email().max(190).optional(),
+  anonymousTest: z.boolean().optional(),
   useEasyvoxChat: z.boolean().optional(),
+  stream: z.boolean().optional(),
 });
 
 const appointmentIntentSchema = z.object({
@@ -37,9 +49,14 @@ const appointmentIntentSchema = z.object({
   crmContact: z
     .object({
       name: z.string().min(1).max(120).nullable().optional(),
+      firstName: z.string().min(1).max(120).nullable().optional(),
+      lastName: z.string().min(1).max(120).nullable().optional(),
       email: z.string().email().nullable().optional(),
       phone: z.string().min(5).max(40).nullable().optional(),
       website: z.string().max(300).nullable().optional(),
+      productInterest: z.string().max(160).nullable().optional(),
+      interestType: z.string().max(120).nullable().optional(),
+      city: z.string().max(120).nullable().optional(),
     })
     .nullable()
     .optional(),
@@ -51,6 +68,81 @@ type UsageEstimate = {
   inputTokens: number | null;
   outputTokens: number | null;
 };
+
+type ChatSuccessResult = {
+  reply: string;
+  assistantName: string;
+  usageEstimate: UsageEstimate;
+  sources: Array<{ id: string; score: number }>;
+  provider: string;
+  mode?: string;
+  appointmentCreated: boolean;
+  appointmentId: string | null;
+  productCard?: {
+    title: string;
+    description: string;
+    priceLabel: string;
+    discountLabel: string | null;
+    productUrl: string;
+    imageUrl: string | null;
+  } | null;
+};
+
+function splitReplyInChunks(reply: string): string[] {
+  const chunks: string[] = [];
+  let cursor = 0;
+  const maxChunkLength = 12;
+  while (cursor < reply.length) {
+    chunks.push(reply.slice(cursor, cursor + maxChunkLength));
+    cursor += maxChunkLength;
+  }
+  return chunks;
+}
+
+function jsonOrStreamResponse(payload: ChatSuccessResult, stream: boolean) {
+  if (!stream) {
+    return NextResponse.json(payload);
+  }
+
+  const encoder = new TextEncoder();
+  const readable = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const write = (event: unknown) => {
+        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+      };
+
+      write({ type: "meta", assistantName: payload.assistantName });
+      for (const chunk of splitReplyInChunks(payload.reply)) {
+        write({ type: "delta", text: chunk });
+        await new Promise((resolve) => setTimeout(resolve, 8));
+      }
+      write({
+        type: "done",
+        payload: {
+          assistantName: payload.assistantName,
+          usageEstimate: payload.usageEstimate,
+          sources: payload.sources,
+          provider: payload.provider,
+          mode: payload.mode ?? null,
+          appointmentCreated: payload.appointmentCreated,
+          appointmentId: payload.appointmentId,
+          productCard: payload.productCard ?? null,
+          reply: payload.reply,
+        },
+      });
+      controller.close();
+    },
+  });
+
+  return new NextResponse(readable, {
+    headers: {
+      "content-type": "application/x-ndjson; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      "x-accel-buffering": "no",
+    },
+  });
+}
 
 type AppointmentRecord = {
   id: string;
@@ -77,9 +169,14 @@ type AppointmentDelegate = {
 
 type CrmContact = {
   name?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
   email?: string | null;
   phone?: string | null;
   website?: string | null;
+  productInterest?: string | null;
+  interestType?: string | null;
+  city?: string | null;
 };
 
 type PurchaseEmailCandidate = {
@@ -87,6 +184,275 @@ type PurchaseEmailCandidate = {
   recipientEmail: string;
   vars: PurchaseEmailTemplateVars;
 };
+
+type ConversationMemoryRow = {
+  userMessage: string;
+  assistantMessage: string;
+};
+
+const MAX_CONVERSATION_MEMORY_MESSAGES = 8;
+const MAX_MEMORY_ENTRY_LENGTH = 500;
+
+function isEasyvoxPricingQuestion(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return [
+    "prezzo",
+    "prezzi",
+    "costo",
+    "costi",
+    "quanto costa",
+    "quanto costano",
+    "tariffa",
+    "tariffe",
+    "abbonamento",
+    "abbonamenti",
+    "setup",
+    "mensile",
+    "canone",
+  ].some((keyword) => normalized.includes(keyword));
+}
+
+function isEasyvoxInfoQuestion(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return [
+    "easyvox",
+    "come funziona",
+    "cosa fa",
+    "che cosa fa",
+    "che servizi",
+    "servizi offre",
+    "informazioni",
+    "spiegami",
+    "presentami",
+    "dimmi di piu",
+  ].some((keyword) => normalized.includes(keyword));
+}
+
+function isEasyvoxSpecificServiceQuestion(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return [
+    "ai conversazionale",
+    "presentazione prodotti",
+    "presentazione servizi",
+    "raccolta contatti",
+    "crm interno",
+    "memoria cliente",
+    "automazione email",
+    "automazione processi",
+    "addestramento",
+    "chat embeddabile",
+    "istanza easyvox",
+    "installazione su istanza",
+    "installazione in locale",
+    "server dedicato",
+    "start & go",
+    "setup iniziale",
+    "customizzazione",
+  ].some((keyword) => normalized.includes(keyword));
+}
+
+function isEasyvoxQuoteQuestion(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return [
+    "preventivo",
+    "stima",
+    "proposta economica",
+    "offerta economica",
+    "quanto verrebbe",
+    "quanto mi costerebbe",
+    "fammi un preventivo",
+  ].some((keyword) => normalized.includes(keyword));
+}
+
+function normalizeEasyvoxLookup(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s&]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+type ServiceLookupItem = {
+  name: string;
+  description: string;
+};
+
+type CatalogAnswerProduct = {
+  slug?: string;
+  name: string;
+  description: string;
+  relatedProductIds?: string[];
+  priceLabel?: string;
+  discountLabel?: string;
+  url?: string;
+  imageUrl?: string | null;
+};
+
+const PRODUCT_CONTEXT_PREFIX = "[[PRODUCT_CONTEXT:";
+
+function buildProductContextMarker(product: CatalogAnswerProduct) {
+  const slug = (product.slug || normalizeEasyvoxLookup(product.name).replace(/\s+/g, "-")).trim();
+  const title = product.name.trim();
+  return `${PRODUCT_CONTEXT_PREFIX}slug=${slug};title=${title}]]`;
+}
+
+function stripProductContextMarker(value: string) {
+  return value.replace(/\n?\[\[PRODUCT_CONTEXT:[^[\]]+\]\]/g, "").trim();
+}
+
+function extractProductContextMarker(value: string): { slug: string; title: string } | null {
+  const match = value.match(/\[\[PRODUCT_CONTEXT:slug=([^;\]]+);title=([^[\]]+)\]\]/);
+  if (!match) return null;
+  return {
+    slug: match[1]?.trim() ?? "",
+    title: match[2]?.trim() ?? "",
+  };
+}
+
+function extractLastProductContext(history: ConversationMemoryRow[]) {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const parsed = extractProductContextMarker(history[index]?.assistantMessage ?? "");
+    if (parsed?.slug || parsed?.title) return parsed;
+  }
+  return null;
+}
+
+function isProductFollowUpQuestion(message: string) {
+  const normalized = normalizeEasyvoxLookup(message);
+  if (!normalized) return false;
+  return [
+    "quanto costa",
+    "prezzo",
+    "sconto",
+    "link",
+    "url",
+    "immagine",
+    "foto",
+    "descrizione",
+    "dettagli",
+    "dimmi di piu",
+    "parlami di piu",
+    "fammi sapere",
+    "questa scheda",
+    "questo prodotto",
+    "quello",
+    "questo",
+    "lo voglio",
+    "mi interessa",
+  ].some((keyword) => normalized.includes(keyword));
+}
+
+function resolveContextualProduct(
+  message: string,
+  products: CatalogAnswerProduct[],
+  lastContext: { slug: string; title: string } | null,
+) {
+  const explicit = getSelectedEasyvoxService(message, products);
+  if (explicit) return explicit;
+  if (!lastContext || !isProductFollowUpQuestion(message)) return null;
+
+  return (
+    products.find((product) => product.slug && product.slug === lastContext.slug) ??
+    products.find((product) => normalizeEasyvoxLookup(product.name) === normalizeEasyvoxLookup(lastContext.title)) ??
+    null
+  );
+}
+
+function getSelectedEasyvoxService(message: string, products: ServiceLookupItem[]) {
+  const normalizedMessage = normalizeEasyvoxLookup(message);
+  const explicitMatch = normalizedMessage.match(/^info prodotto\s+(.+)$/i);
+  const explicitName = explicitMatch?.[1]?.trim();
+
+  if (explicitName) {
+    return (
+      products.find((product) => normalizeEasyvoxLookup(product.name) === explicitName) ??
+      products.find((product) => normalizeEasyvoxLookup(product.name).includes(explicitName)) ??
+      null
+    );
+  }
+
+  return (
+    products.find((product) => normalizedMessage.includes(normalizeEasyvoxLookup(product.name))) ?? null
+  );
+}
+
+function buildEasyvoxSelectedServiceDirective(message: string, products: ServiceLookupItem[]): string {
+  const selectedService = getSelectedEasyvoxService(message, products);
+  if (!selectedService) return "";
+
+  return `\n\nQuando l'utente chiede info prodotto o informazioni su un servizio selezionato dal catalogo, rispondi usando principalmente questa scheda servizio.
+
+Servizio selezionato: ${selectedService.name}
+Descrizione ufficiale:
+${selectedService.description}
+
+Istruzioni:
+- concentra la risposta su questo solo servizio
+- usa il contenuto sopra come base principale
+- spiega in modo chiaro e concreto cosa fa e perche e utile
+- non accorciare troppo: usa circa 50-90 parole, salvo richiesta diversa
+- non allargarti agli altri servizi se non richiesto`;
+}
+
+function isCatalogListQuestion(message: string): boolean {
+  const normalized = normalizeEasyvoxLookup(message);
+  return [
+    "catalogo",
+    "prodotti",
+    "mostrami i prodotti",
+    "fammi vedere i prodotti",
+    "elenco prodotti",
+    "lista prodotti",
+  ].some((keyword) => normalized.includes(keyword));
+}
+
+function formatCatalogProductReply(product: CatalogAnswerProduct) {
+  const parts = [
+    `**${product.name}**`,
+    product.description,
+    product.priceLabel ? `Prezzo: ${product.priceLabel}` : null,
+    product.discountLabel ? `Sconto: ${product.discountLabel}` : null,
+    product.relatedProductIds?.length ? `Prodotti correlati: ${product.relatedProductIds.join(", ")}` : null,
+    product.url ? `Link: ${product.url}` : null,
+  ].filter(Boolean);
+
+  return parts.join("\n\n");
+}
+
+function toProductCard(product: CatalogAnswerProduct): ChatSuccessResult["productCard"] {
+  if (!product.url) return null;
+  return {
+    title: product.name,
+    description: product.description,
+    priceLabel: product.priceLabel ?? "Prezzo non disponibile",
+    discountLabel: product.discountLabel ?? null,
+    productUrl: product.url,
+    imageUrl: product.imageUrl ?? null,
+  };
+}
+
+function formatCatalogListReply(products: CatalogAnswerProduct[]) {
+  const lines = products.slice(0, 8).map((product, index) => {
+    const meta = [product.priceLabel, product.discountLabel].filter(Boolean).join(" | ");
+    return `${index + 1}. ${product.name}${meta ? ` - ${meta}` : ""}`;
+  });
+
+  return `Ecco i prodotti disponibili:\n${lines.join("\n")}`;
+}
+
+function normalizeCustomerName(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function extractFirstJsonObject(raw: string): string | null {
   const fenced = raw.match(/```json\s*([\s\S]*?)\s*```/i);
@@ -115,6 +481,49 @@ function normalizeWebsite(value: string | null | undefined): string | null {
   return `https://${raw}`;
 }
 
+function normalizeCrmText(value: string | null | undefined, maxLength = 120): string | null {
+  if (!value) return null;
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (!compact) return null;
+  return compact.slice(0, maxLength);
+}
+
+function splitFullName(value: string | null | undefined): { firstName: string | null; lastName: string | null } {
+  const normalized = normalizeCrmText(value, 120);
+  if (!normalized) return { firstName: null, lastName: null };
+  const parts = normalized.split(" ").filter(Boolean);
+  if (parts.length === 1) return { firstName: parts[0], lastName: null };
+  return {
+    firstName: parts[0] ?? null,
+    lastName: parts.slice(1).join(" ") || null,
+  };
+}
+
+function composeFullName(contact: CrmContact): string | null {
+  const fromParts = [contact.firstName, contact.lastName].filter(Boolean).join(" ").trim();
+  return normalizeCrmText(contact.name || fromParts, 120);
+}
+
+function inferInterestType(message: string): string | null {
+  const normalized = message.toLowerCase();
+  if (/(preventivo|offerta|proposta economica|quotazione)/.test(normalized)) return "preventivo";
+  if (/(demo|dimostrazione)/.test(normalized)) return "demo";
+  if (/(acquist|comprare|ordine|ordinare)/.test(normalized)) return "acquisto";
+  if (/(appuntamento|call|richiam|incontro)/.test(normalized)) return "contatto commerciale";
+  if (/(informazioni|info|approfond)/.test(normalized)) return "approfondimento";
+  if (/(interessat|mi interessa|vorrei sapere)/.test(normalized)) return "interesse generico";
+  return null;
+}
+
+function extractNamedField(message: string, labels: string[]): string | null {
+  for (const label of labels) {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = message.match(new RegExp(`${escaped}\\s*[:,-]?\\s*([^\\n,;]+)`, "i"));
+    if (match?.[1]) return normalizeCrmText(match[1]);
+  }
+  return null;
+}
+
 function extractCrmFromMessage(message: string): CrmContact {
   const email = message.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i)?.[0] ?? null;
   const websiteRaw =
@@ -125,21 +534,50 @@ function extractCrmFromMessage(message: string): CrmContact {
   const nameRaw = message.split(/[,\n]/)[0]?.trim() ?? "";
   const name =
     nameRaw.split(" ").length >= 2 && !/\d/.test(nameRaw) && nameRaw.length <= 120 ? nameRaw : null;
+  const nameFromLabel =
+    extractNamedField(message, ["nome e cognome", "nominativo", "contatto"]) ??
+    extractNamedField(message, ["nome"]);
+  const normalizedName = normalizeCrmText(nameFromLabel || name, 120);
+  const nameParts = splitFullName(normalizedName);
+  const city = extractNamedField(message, ["citta", "città", "city"]);
+  const productInterest =
+    extractNamedField(message, ["prodotto", "servizio", "interessato a", "interesse per"]) ??
+    null;
 
   return {
-    name,
+    name: normalizedName,
+    firstName: nameParts.firstName,
+    lastName: nameParts.lastName,
     email,
     phone: phoneRaw ? phoneRaw.replace(/\s+/g, " ").trim() : null,
     website: normalizeWebsite(websiteRaw),
+    productInterest,
+    interestType: inferInterestType(message),
+    city,
   };
 }
 
 function mergeCrmContact(aiContact: CrmContact | null | undefined, regexContact: CrmContact): CrmContact {
+  const mergedName = normalizeCrmText(aiContact?.name?.trim() || regexContact.name || null, 120);
+  const mergedParts = splitFullName(mergedName);
   return {
-    name: aiContact?.name?.trim() || regexContact.name || null,
+    name: mergedName,
+    firstName:
+      normalizeCrmText(aiContact?.firstName?.trim() || regexContact.firstName || mergedParts.firstName, 120),
+    lastName:
+      normalizeCrmText(aiContact?.lastName?.trim() || regexContact.lastName || mergedParts.lastName, 120),
     email: aiContact?.email?.trim() || regexContact.email || null,
     phone: aiContact?.phone?.trim() || regexContact.phone || null,
     website: normalizeWebsite(aiContact?.website?.trim() || regexContact.website || null),
+    productInterest: normalizeCrmText(
+      aiContact?.productInterest?.trim() || regexContact.productInterest || null,
+      160,
+    ),
+    interestType: normalizeCrmText(
+      aiContact?.interestType?.trim() || regexContact.interestType || null,
+      120,
+    ),
+    city: normalizeCrmText(aiContact?.city?.trim() || regexContact.city || null, 120),
   };
 }
 
@@ -183,10 +621,29 @@ function normalizeScheduledFor(raw: string | null | undefined): string | null {
   return parsed.toISOString();
 }
 
+function compactMemoryText(value: string, maxLength = MAX_MEMORY_ENTRY_LENGTH): string {
+  const compact = stripProductContextMarker(value).replace(/\s+/g, " ").trim();
+  if (!compact) return "";
+  if (compact.length <= maxLength) return compact;
+  return `${compact.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+}
+
+function buildConversationMemory(history: ConversationMemoryRow[]): string {
+  if (history.length === 0) return "";
+  return history
+    .map((entry, index) => {
+      const userMessage = compactMemoryText(entry.userMessage);
+      const assistantMessage = compactMemoryText(entry.assistantMessage);
+      return `Turno ${index + 1}\nUtente: ${userMessage || "-"}\nAssistente: ${assistantMessage || "-"}`;
+    })
+    .join("\n\n");
+}
+
 async function detectAppointmentIntent(
   message: string,
   nowIso: string,
   runtimeSettings: Awaited<ReturnType<typeof getRuntimeSettings>>,
+  conversationMemory: string,
 ) {
   const completion = await completeChatWithProvider(
     {
@@ -201,7 +658,17 @@ Devi rispondere SOLO con JSON valido (senza testo extra) rispettando questo sche
   "timezone": string|null,
   "notes": string|null,
   "listLimit": number|null,
-  "crmContact": { "name": string|null, "email": string|null, "phone": string|null, "website": string|null } | null,
+  "crmContact": {
+    "name": string|null,
+    "firstName": string|null,
+    "lastName": string|null,
+    "email": string|null,
+    "phone": string|null,
+    "website": string|null,
+    "productInterest": string|null,
+    "interestType": string|null,
+    "city": string|null
+  } | null,
   "missingFields": string[],
   "assistantReply": string
 }
@@ -214,9 +681,15 @@ Regole:
 - assistantReply deve essere in italiano, breve e operativo. Se mancano dati, chiedili esplicitamente.
 - per list_appointments puoi valorizzare listLimit (default 5).
 - se riconosci dati CRM nel messaggio utente (nome, email, telefono, sito), valorizza crmContact.
+- se riconosci anche cognome, prodotto/servizio di interesse, tipo di interesse o citta, valorizzali in crmContact.
 - Se l'intento non è appuntamento, imposta intent="general" e assistantReply con stringa vuota.
 `,
-      userPrompt: `Data corrente ISO: ${nowIso}\nMessaggio utente:\n${message}`,
+      userPrompt: `Data corrente ISO: ${nowIso}
+Memoria recente conversazione:
+${conversationMemory || "Nessuna memoria disponibile."}
+
+Messaggio utente:
+${message}`,
     },
     runtimeSettings,
   );
@@ -251,8 +724,22 @@ export async function POST(request: NextRequest) {
   let clientId = request.headers.get("x-client-id");
   const clientSlug = request.headers.get("x-client-slug")?.trim().toLowerCase() ?? "";
   const forceEasyvoxChat = parsed.data.useEasyvoxChat === true;
+  const stream = parsed.data.stream === true;
+  const anonymousTest = parsed.data.anonymousTest === true;
   const payloadCustomerName = parsed.data.customerName?.trim() ?? "";
   const payloadCustomerEmail = parsed.data.customerEmail?.trim().toLowerCase() ?? "";
+  const authCustomerEmail = authUser?.email?.trim().toLowerCase() ?? "";
+  const authCustomerName =
+    authUser?.name?.trim() ||
+    authCustomerEmail.split("@")[0]?.replace(/[._-]+/g, " ").trim() ||
+    "";
+  const effectiveAnonymousTest = anonymousTest && !authCustomerEmail;
+  let effectiveCustomerName = effectiveAnonymousTest ? "" : payloadCustomerName || authCustomerName;
+  let effectiveCustomerEmail = effectiveAnonymousTest ? "" : payloadCustomerEmail || authCustomerEmail;
+
+  if (!effectiveAnonymousTest && (!effectiveCustomerName || !effectiveCustomerEmail)) {
+    return jsonError("Prima di iniziare la chat devi scegliere nome+email oppure test anonimo.", 400);
+  }
 
   if (!clientId && !forceEasyvoxChat && clientSlug) {
     const bySlug = await prisma.client.findUnique({
@@ -275,32 +762,126 @@ export async function POST(request: NextRequest) {
 
   if (!clientId) {
     try {
+      const defaultEasyvoxClient = await prisma.client.findUnique({
+        where: { slug: "vox" },
+        select: { id: true },
+      });
+      const savedEasyvoxProducts = defaultEasyvoxClient
+        ? await prisma.product.findMany({
+            where: { clientId: defaultEasyvoxClient.id },
+            orderBy: { createdAt: "desc" },
+            include: {
+              images: {
+                orderBy: { sortOrder: "asc" },
+                take: 1,
+                include: {
+                  fileAsset: {
+                    select: { id: true },
+                  },
+                },
+              },
+            },
+          })
+        : [];
+      const easyvoxProducts =
+        savedEasyvoxProducts.length > 0
+          ? savedEasyvoxProducts.map((product) => ({
+              slug: product.slug,
+              name: product.title,
+              description: `${product.description}\nPrezzo: EUR ${Number(product.price).toFixed(2)}\nSconto: ${product.discountPercent}%\nURL: ${product.productUrl}`,
+              priceLabel: `EUR ${Number(product.price).toFixed(2)}`,
+              discountLabel: `${product.discountPercent}%`,
+              relatedProductIds:
+                typeof product.structuredOutput === "object" &&
+                product.structuredOutput &&
+                !Array.isArray(product.structuredOutput) &&
+                typeof (product.structuredOutput as { product?: { relatedProductIds?: unknown } }).product === "object"
+                  ? ((((product.structuredOutput as { product?: { relatedProductIds?: unknown } }).product?.relatedProductIds as unknown[]) ?? [])
+                      .map((item) => String(item))
+                      .filter(Boolean))
+                  : [],
+              url: product.productUrl,
+              imageUrl: product.images[0]?.fileAsset
+                ? `/api/public/files/${product.images[0].fileAsset.id}?clientId=${defaultEasyvoxClient?.id ?? ""}`
+                : null,
+            }))
+          : mockProducts.map((product) => ({
+              slug: product.slug || normalizeEasyvoxLookup(product.name).replace(/\s+/g, "-"),
+              name: product.name,
+              description: product.description,
+              relatedProductIds: product.relatedProductIds,
+              priceLabel: product.priceLabel,
+              url: product.productUrl,
+            }));
+      const selectedProduct = resolveContextualProduct(parsed.data.message, easyvoxProducts, null);
+      if (selectedProduct) {
+        return jsonOrStreamResponse({
+          reply: formatCatalogProductReply(selectedProduct),
+          assistantName: "Assistant",
+          usageEstimate: { inputTokens: null, outputTokens: null },
+          sources: [],
+          provider: systemRuntimeSettings.provider,
+          mode: "easyvox-chat",
+          appointmentCreated: false,
+          appointmentId: null,
+          productCard: toProductCard(selectedProduct),
+        }, stream);
+      }
+      if (isCatalogListQuestion(parsed.data.message) && easyvoxProducts.length > 0) {
+        return jsonOrStreamResponse({
+          reply: formatCatalogListReply(easyvoxProducts),
+          assistantName: "Assistant",
+          usageEstimate: { inputTokens: null, outputTokens: null },
+          sources: [],
+          provider: systemRuntimeSettings.provider,
+          mode: "easyvox-chat",
+          appointmentCreated: false,
+          appointmentId: null,
+          productCard: null,
+        }, stream);
+      }
       const easyvoxCustomerLine =
-        payloadCustomerName || payloadCustomerEmail
-          ? `\nCliente: ${payloadCustomerName || "Cliente"}${payloadCustomerEmail ? ` (${payloadCustomerEmail})` : ""}.`
+        effectiveCustomerName || effectiveCustomerEmail
+          ? `\nCliente: ${effectiveCustomerName || "Cliente"}${effectiveCustomerEmail ? ` (${effectiveCustomerEmail})` : ""}.`
           : "";
       const easyvoxSystemPrompt =
         systemRuntimeSettings.easyvoxSystemPrompt?.trim() ||
-        "Sei Easyvox chat, helpdesk ufficiale EasyVox per utenti che stanno valutando o attivando il servizio. Rispondi in modo pratico e operativo: onboarding, configurazione, pricing, attivazione, integrazioni, troubleshooting di base. Se mancano dettagli specifici di un'azienda, dichiaralo e proponi i passaggi successivi.";
+        DEFAULT_EASYVOX_SYSTEM_PROMPT;
+      const infoDirective = isEasyvoxInfoQuestion(parsed.data.message)
+        ? `\n\n${EASYVOX_INFO_PROMPT}`
+        : "";
+      const serviceDetailsDirective = isEasyvoxSpecificServiceQuestion(parsed.data.message)
+        ? `\n\n${EASYVOX_SERVICE_DETAILS_PROMPT}`
+        : "";
+      const selectedServiceDirective = buildEasyvoxSelectedServiceDirective(parsed.data.message, easyvoxProducts);
+      const quoteDirective = isEasyvoxQuoteQuestion(parsed.data.message)
+        ? `\n\n${EASYVOX_QUOTE_PROMPT}`
+        : "";
+      const pricingDirective = isEasyvoxPricingQuestion(parsed.data.message)
+        ? `\n\n${EASYVOX_PRICING_PROMPT}`
+        : "";
       const completion = await completeChatWithProvider(
         {
-          systemPrompt: `${easyvoxSystemPrompt}
-Rivolgiti sempre al cliente per nome quando appropriato.${easyvoxCustomerLine}`,
+          systemPrompt: `${easyvoxSystemPrompt}${infoDirective}${serviceDetailsDirective}${selectedServiceDirective}${quoteDirective}${pricingDirective}
+Rivolgiti sempre al cliente per nome quando appropriato.${easyvoxCustomerLine}
+Puoi usare markdown semplice quando aiuta la leggibilita: paragrafi brevi, elenchi puntati o numerati, grassetto leggero per evidenziare passaggi chiave. Evita tabelle e HTML.`,
           userPrompt: parsed.data.message,
         },
         systemRuntimeSettings,
       );
+      const reply = sanitizeChatText(completion.reply);
 
-      return NextResponse.json({
-        reply: completion.reply,
-        assistantName: "Easyvox chat",
+      return jsonOrStreamResponse({
+        reply,
+        assistantName: "Assistant",
         usageEstimate: completion.usageEstimate,
         sources: [],
         provider: systemRuntimeSettings.provider,
         mode: "easyvox-chat",
         appointmentCreated: false,
         appointmentId: null,
-      });
+        productCard: null,
+      }, stream);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Errore chat provider";
       return jsonError(detail, 500);
@@ -318,10 +899,12 @@ Rivolgiti sempre al cliente per nome quando appropriato.${easyvoxCustomerLine}`,
       canTakeAppointments: true,
       requireProfiling: true,
       requireUserAuthForChat: true,
+      isSuspended: true,
     },
   });
 
   if (!client) return jsonError("Tenant non trovato", 404);
+  if (client.isSuspended) return jsonError("Tenant sospeso. Chat temporaneamente non disponibile.", 423);
   const access = authUser ? await getTenantAccess(client.id, authUser.id) : null;
   const isOwner = access?.isOwner ?? false;
   const hasTenantAccess = access?.hasAccess ?? false;
@@ -332,13 +915,22 @@ Rivolgiti sempre al cliente per nome quando appropriato.${easyvoxCustomerLine}`,
   if (client.requireUserAuthForChat && !hasTenantAccess) {
     return jsonError("Non autorizzato per questo tenant.", 403);
   }
+  if (client.requireUserAuthForChat && authCustomerEmail) {
+    effectiveCustomerEmail = authCustomerEmail;
+    if (!effectiveCustomerName) {
+      effectiveCustomerName = authCustomerName || "Cliente";
+    }
+  }
 
   if (authUser && hasTenantAccess) {
     await touchTenantMembership(client.id, authUser.id, isOwner);
   }
 
-  if (client.requireProfiling && (!payloadCustomerName || !payloadCustomerEmail)) {
+  if (client.requireProfiling && !effectiveAnonymousTest && (!effectiveCustomerName || !effectiveCustomerEmail)) {
     return jsonError("Profilazione obbligatoria: nome ed email sono richiesti prima di chattare.", 400);
+  }
+  if (!effectiveAnonymousTest && !effectiveCustomerName) {
+    return jsonError("Prima di iniziare la chat e richiesto almeno il nome del cliente.", 400);
   }
 
   const runtimeSettings = hasTenantAccess
@@ -356,21 +948,121 @@ Rivolgiti sempre al cliente per nome quando appropriato.${easyvoxCustomerLine}`,
   const resolvedClientId = clientId;
   try {
     const result = await withTenant(resolvedClientId, async (tx) => {
+      const tenantTx = tx as typeof tx & {
+        chatCustomer: {
+          upsert: (args: {
+            where: {
+              clientId_normalizedName: {
+                clientId: string;
+                normalizedName: string;
+              };
+            };
+            update: {
+              name: string;
+              email?: string | undefined;
+              lastSessionId: string;
+            };
+            create: {
+              clientId: string;
+              name: string;
+              normalizedName: string;
+              email: string | null;
+              lastSessionId: string;
+            };
+            select: { id: true; name: true };
+          }) => Promise<{ id: string; name: string }>;
+        };
+        conversation: {
+          findMany: typeof tx.conversation.findMany;
+          create: (args: {
+            data: {
+              clientId: string;
+              customerId: string | null;
+              sessionId: string;
+              userMessage: string;
+              assistantMessage: string;
+            };
+          }) => Promise<unknown>;
+        };
+      };
       const chunks = await retrieveTopChunks(tx, resolvedClientId, embedding, 5);
       const context = chunks.map((chunk, index) => `[${index + 1}] ${chunk.content}`).join("\n\n");
       const nowIso = new Date().toISOString();
-      const customerName = payloadCustomerName;
-      const customerEmail = payloadCustomerEmail;
+      const customerName = effectiveCustomerName;
+      const customerEmail = effectiveCustomerEmail;
+      const normalizedCustomerName = normalizeCustomerName(customerName);
+      const chatCustomer = !effectiveAnonymousTest && normalizedCustomerName
+        ? await tenantTx.chatCustomer.upsert({
+            where: {
+              clientId_normalizedName: {
+                clientId: resolvedClientId,
+                normalizedName: normalizedCustomerName,
+              },
+            },
+            update: {
+              name: customerName,
+              email: customerEmail || undefined,
+              lastSessionId: parsed.data.sessionId,
+            },
+            create: {
+              clientId: resolvedClientId,
+              name: customerName,
+              normalizedName: normalizedCustomerName,
+              email: customerEmail || null,
+              lastSessionId: parsed.data.sessionId,
+            },
+            select: {
+              id: true,
+              name: true,
+            },
+          })
+        : null;
+      const previousMessages = await tenantTx.conversation.findMany({
+        where: {
+          clientId: resolvedClientId,
+          ...(chatCustomer
+            ? { customerId: chatCustomer.id }
+            : { sessionId: parsed.data.sessionId }),
+        },
+        orderBy: { createdAt: "desc" },
+        take: MAX_CONVERSATION_MEMORY_MESSAGES,
+        select: {
+          userMessage: true,
+          assistantMessage: true,
+        },
+      });
+      const chronologicalMessages = previousMessages.reverse();
+      const conversationMemory = buildConversationMemory(chronologicalMessages);
+      const lastProductContext = extractLastProductContext(chronologicalMessages);
+      const catalogProducts = await tx.product.findMany({
+        where: { clientId: resolvedClientId },
+        orderBy: { createdAt: "desc" },
+        include: {
+          images: {
+            orderBy: { sortOrder: "asc" },
+            take: 1,
+            include: {
+              fileAsset: {
+                select: { id: true },
+              },
+            },
+          },
+        },
+      });
 
-      const intentAnalysis = await detectAppointmentIntent(parsed.data.message, nowIso, runtimeSettings).catch(
-        () => null,
-      );
+      const intentAnalysis = await detectAppointmentIntent(
+        parsed.data.message,
+        nowIso,
+        runtimeSettings,
+        conversationMemory,
+      ).catch(() => null);
       const regexCrm = extractCrmFromMessage(parsed.data.message);
       const mergedCrm = mergeCrmContact(intentAnalysis?.data.crmContact, regexCrm);
       let finalReply = "";
       let usageEstimate: UsageEstimate = { inputTokens: null, outputTokens: null };
       let appointmentCreated = false;
       let appointmentId: string | null = null;
+      let productCard: ChatSuccessResult["productCard"] = null;
       let purchaseEmailCandidate: PurchaseEmailCandidate | null = null;
 
       if (intentAnalysis?.data.intent === "list_appointments") {
@@ -476,11 +1168,86 @@ Rivolgiti sempre al cliente per nome quando appropriato.${easyvoxCustomerLine}`,
         usageEstimate = intentAnalysis.usageEstimate;
         }
       } else {
+        const selectedCatalogProductRecord = getSelectedEasyvoxService(
+          parsed.data.message,
+          catalogProducts.map((product) => ({
+            slug: product.slug,
+            name: product.title,
+            description: product.description,
+            priceLabel: `EUR ${Number(product.price).toFixed(2)}`,
+            discountLabel: `${product.discountPercent}%`,
+            url: product.productUrl,
+            imageUrl: product.images[0]?.fileAsset
+              ? `/api/public/files/${product.images[0].fileAsset.id}?clientId=${resolvedClientId}`
+              : null,
+          })),
+        );
+        const contextualCatalogProduct = resolveContextualProduct(
+          parsed.data.message,
+          catalogProducts.map((product) => ({
+            slug: product.slug,
+            name: product.title,
+            description: product.description,
+            priceLabel: `EUR ${Number(product.price).toFixed(2)}`,
+            discountLabel: `${product.discountPercent}%`,
+            url: product.productUrl,
+            imageUrl: product.images[0]?.fileAsset
+              ? `/api/public/files/${product.images[0].fileAsset.id}?clientId=${resolvedClientId}`
+              : null,
+          })),
+          lastProductContext,
+        );
+        const activeProduct = contextualCatalogProduct ?? selectedCatalogProductRecord;
+        if (activeProduct) {
+          finalReply = formatCatalogProductReply(activeProduct);
+          usageEstimate = intentAnalysis?.usageEstimate ?? { inputTokens: null, outputTokens: null };
+          productCard = toProductCard(activeProduct);
+        } else if (isCatalogListQuestion(parsed.data.message) && catalogProducts.length > 0) {
+          finalReply = formatCatalogListReply(
+            catalogProducts.map((product) => ({
+              name: product.title,
+              description: product.description,
+              priceLabel: `EUR ${Number(product.price).toFixed(2)}`,
+              discountLabel: `${product.discountPercent}%`,
+              url: product.productUrl,
+              imageUrl: product.images[0]?.fileAsset
+                ? `/api/public/files/${product.images[0].fileAsset.id}?clientId=${resolvedClientId}`
+                : null,
+            })),
+          );
+          usageEstimate = intentAnalysis?.usageEstimate ?? { inputTokens: null, outputTokens: null };
+        } else {
         const customerDirective = customerName
           ? `Rivolgiti al cliente per nome quando appropriato: ${customerName}.`
+          : anonymousTest
+          ? "La sessione e anonima. Non fingere di conoscere il cliente e non chiedere dati personali se non sono necessari."
           : "Se non conosci il nome del cliente, chiedilo con naturalezza solo quando utile.";
-        const systemPrompt = `${client.systemPrompt ?? "Rispondi in modo chiaro, accurato e conciso."}\n\nSe non sai qualcosa, dichiaralo esplicitamente.\n${customerDirective}`;
-        const userPrompt = `Contesto RAG:\n${context || "Nessun documento disponibile."}\n\nMessaggio utente:\n${parsed.data.message}`;
+        const selectedCatalogProduct = buildEasyvoxSelectedServiceDirective(
+          parsed.data.message,
+          catalogProducts.map((product) => ({
+            name: product.title,
+            description: `${product.description}\nPrezzo: EUR ${Number(product.price).toFixed(2)}\nSconto: ${product.discountPercent}%\nURL: ${product.productUrl}`,
+          })),
+        );
+        const catalogDirective =
+          catalogProducts.length > 0
+            ? `\nCatalogo prodotti attivo:\n${catalogProducts
+                .slice(0, 20)
+                .map(
+                  (product, index) =>
+                    `${index + 1}. ${product.title} - EUR ${Number(product.price).toFixed(2)} - sconto ${product.discountPercent}% - ${product.productUrl}`,
+                )
+                .join("\n")}\nSe la richiesta riguarda prodotti o catalogo, usa prima questi elementi e invita l'utente ad aprire il dettaglio prodotto desiderato.`
+            : "";
+        const systemPrompt = `${client.systemPrompt ?? DEFAULT_CLIENT_SYSTEM_PROMPT}\n\nSe non sai qualcosa, dichiaralo esplicitamente.\n${customerDirective}${catalogDirective}${selectedCatalogProduct}\nPuoi usare markdown semplice quando migliora la leggibilita: paragrafi brevi, elenchi puntati o numerati, e **grassetto** solo per concetti chiave. Evita tabelle e HTML.`;
+        const userPrompt = `Contesto RAG:
+${context || "Nessun documento disponibile."}
+
+Memoria cliente e conversazione recente:
+${conversationMemory || "Nessuna memoria disponibile."}
+
+Messaggio utente:
+${parsed.data.message}`;
 
         const completion = await completeChatWithProvider(
           {
@@ -489,27 +1256,55 @@ Rivolgiti sempre al cliente per nome quando appropriato.${easyvoxCustomerLine}`,
           },
           runtimeSettings,
         );
-        finalReply = completion.reply;
+        finalReply = sanitizeChatText(completion.reply);
         usageEstimate = intentAnalysis
           ? mergeUsage(intentAnalysis.usageEstimate, completion.usageEstimate)
           : completion.usageEstimate;
+        }
       }
 
-      await tx.conversation.create({
+      await tenantTx.conversation.create({
         data: {
           clientId: resolvedClientId,
+          customerId: chatCustomer?.id ?? null,
           sessionId: parsed.data.sessionId,
           userMessage: parsed.data.message,
-          assistantMessage: finalReply,
+          assistantMessage: productCard
+            ? `${sanitizeChatText(finalReply)}\n\n${buildProductContextMarker({
+                slug: catalogProducts.find((product) => product.productUrl === productCard.productUrl)?.slug,
+                name: productCard.title,
+                description: productCard.description,
+                priceLabel: productCard.priceLabel,
+                discountLabel: productCard.discountLabel ?? undefined,
+                url: productCard.productUrl,
+                imageUrl: productCard.imageUrl,
+              })}`
+            : sanitizeChatText(finalReply),
         },
       });
+
+      const customerNameParts = splitFullName(customerName);
+      const resolvedCrm: CrmContact = {
+        ...mergedCrm,
+        name: composeFullName(mergedCrm) || normalizeCrmText(customerName, 120) || "Contatto chat",
+        firstName: mergedCrm.firstName || customerNameParts.firstName,
+        lastName: mergedCrm.lastName || customerNameParts.lastName,
+        email: mergedCrm.email?.trim() || customerEmail || null,
+        productInterest: mergedCrm.productInterest || productCard?.title || null,
+        interestType: mergedCrm.interestType || inferInterestType(parsed.data.message),
+      };
 
       let leadSnapshot: {
         id: string;
         name: string;
+        firstName: string | null;
+        lastName: string | null;
         email: string | null;
         phone: string | null;
         website: string | null;
+        productInterest: string | null;
+        interestType: string | null;
+        city: string | null;
         purchaseEmailSentAt: Date | null;
       } | null = await tx.lead.findFirst({
         where: { clientId: resolvedClientId, sessionId: parsed.data.sessionId },
@@ -517,9 +1312,14 @@ Rivolgiti sempre al cliente per nome quando appropriato.${easyvoxCustomerLine}`,
         select: {
           id: true,
           name: true,
+          firstName: true,
+          lastName: true,
           email: true,
           phone: true,
           website: true,
+          productInterest: true,
+          interestType: true,
+          city: true,
           purchaseEmailSentAt: true,
         },
       });
@@ -528,18 +1328,28 @@ Rivolgiti sempre al cliente per nome quando appropriato.${easyvoxCustomerLine}`,
         leadSnapshot = await tx.lead.update({
           where: { id: leadSnapshot.id },
           data: {
-            name: mergedCrm.name?.trim() || customerName || leadSnapshot.name,
-            email: mergedCrm.email?.trim() || customerEmail || leadSnapshot.email,
-            phone: mergedCrm.phone?.trim() || leadSnapshot.phone,
-            website: mergedCrm.website?.trim() || leadSnapshot.website,
+            name: resolvedCrm.name || leadSnapshot.name,
+            firstName: resolvedCrm.firstName || leadSnapshot.firstName,
+            lastName: resolvedCrm.lastName || leadSnapshot.lastName,
+            email: resolvedCrm.email || leadSnapshot.email,
+            phone: resolvedCrm.phone?.trim() || leadSnapshot.phone,
+            website: resolvedCrm.website?.trim() || leadSnapshot.website,
+            productInterest: resolvedCrm.productInterest || leadSnapshot.productInterest,
+            interestType: resolvedCrm.interestType || leadSnapshot.interestType,
+            city: resolvedCrm.city || leadSnapshot.city,
             message: parsed.data.message,
           },
           select: {
             id: true,
             name: true,
+            firstName: true,
+            lastName: true,
             email: true,
             phone: true,
             website: true,
+            productInterest: true,
+            interestType: true,
+            city: true,
             purchaseEmailSentAt: true,
           },
         });
@@ -548,18 +1358,28 @@ Rivolgiti sempre al cliente per nome quando appropriato.${easyvoxCustomerLine}`,
           data: {
             clientId: resolvedClientId,
             sessionId: parsed.data.sessionId,
-            name: mergedCrm.name?.trim() || customerName || "Contatto chat",
-            email: mergedCrm.email?.trim() || customerEmail || null,
-            phone: mergedCrm.phone?.trim() || null,
-            website: mergedCrm.website?.trim() || null,
+            name: resolvedCrm.name || "Contatto chat",
+            firstName: resolvedCrm.firstName || null,
+            lastName: resolvedCrm.lastName || null,
+            email: resolvedCrm.email || null,
+            phone: resolvedCrm.phone?.trim() || null,
+            website: resolvedCrm.website?.trim() || null,
+            productInterest: resolvedCrm.productInterest || null,
+            interestType: resolvedCrm.interestType || null,
+            city: resolvedCrm.city || null,
             message: parsed.data.message,
           },
           select: {
             id: true,
             name: true,
+            firstName: true,
+            lastName: true,
             email: true,
             phone: true,
             website: true,
+            productInterest: true,
+            interestType: true,
+            city: true,
             purchaseEmailSentAt: true,
           },
         });
@@ -608,6 +1428,7 @@ Rivolgiti sempre al cliente per nome quando appropriato.${easyvoxCustomerLine}`,
         provider: runtimeSettings.provider,
         appointmentCreated,
         appointmentId,
+        productCard,
         purchaseEmailCandidate,
       };
     });
@@ -632,7 +1453,7 @@ Rivolgiti sempre al cliente per nome quando appropriato.${easyvoxCustomerLine}`,
     const safeResult = { ...result } as typeof result & { purchaseEmailCandidate?: unknown };
     delete safeResult.purchaseEmailCandidate;
 
-    return NextResponse.json(safeResult);
+    return jsonOrStreamResponse(safeResult, stream);
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Errore interno chat";
     return jsonError(detail, 500);

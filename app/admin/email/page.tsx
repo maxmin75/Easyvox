@@ -35,6 +35,7 @@ export default function AdminEmailPage() {
   );
   const [testTo, setTestTo] = useState("");
   const [sendingTest, setSendingTest] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   async function loadSettings() {
     const response = await fetch("/api/admin/email-settings");
@@ -61,32 +62,38 @@ export default function AdminEmailPage() {
 
   async function saveSettings(event: FormEvent) {
     event.preventDefault();
+    setSavingSettings(true);
+    try {
+      const response = await fetch("/api/admin/email-settings", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          purchaseEmailEnabled: enabled,
+          resendApiKey: resendApiKey.trim() || undefined,
+          purchaseEmailFrom: from.trim() || undefined,
+          purchaseEmailReplyTo: replyTo.trim() || undefined,
+          clearPurchaseEmailReplyTo: !replyTo.trim(),
+          purchaseEmailSubjectTemplate: subjectTemplate.trim(),
+          purchaseEmailBodyTemplate: bodyTemplate.trim(),
+          purchaseIntentKeywords: keywords.trim(),
+        }),
+      });
 
-    const response = await fetch("/api/admin/email-settings", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        purchaseEmailEnabled: enabled,
-        resendApiKey: resendApiKey.trim() || undefined,
-        purchaseEmailFrom: from.trim() || undefined,
-        purchaseEmailReplyTo: replyTo.trim() || undefined,
-        clearPurchaseEmailReplyTo: !replyTo.trim(),
-        purchaseEmailSubjectTemplate: subjectTemplate.trim(),
-        purchaseEmailBodyTemplate: bodyTemplate.trim(),
-        purchaseIntentKeywords: keywords.trim(),
-      }),
-    });
+      const data = (await response.json().catch(() => ({}))) as EmailSettingsResponse;
+      if (!response.ok) {
+        setStatus(data.error ?? "Errore salvataggio impostazioni email");
+        return;
+      }
 
-    const data = (await response.json()) as EmailSettingsResponse;
-    if (!response.ok) {
-      setStatus(data.error ?? "Errore salvataggio impostazioni email");
-      return;
+      setResendApiKey("");
+      setHasResendApiKey(data.settings.hasResendApiKey);
+      setEnvOverrides(data.envOverrides);
+      setStatus("Impostazioni email salvate");
+    } catch {
+      setStatus("Errore di rete nel salvataggio impostazioni email");
+    } finally {
+      setSavingSettings(false);
     }
-
-    setResendApiKey("");
-    setHasResendApiKey(data.settings.hasResendApiKey);
-    setEnvOverrides(data.envOverrides);
-    setStatus("Impostazioni email salvate");
   }
 
   async function sendTestEmail() {
@@ -194,9 +201,12 @@ export default function AdminEmailPage() {
             style={{ ...inputStyle, resize: "vertical" }}
           />
 
-          <button type="submit" style={primaryButtonStyle}>
-            Salva impostazioni email
-          </button>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <button type="submit" style={primaryButtonStyle} disabled={savingSettings}>
+              {savingSettings ? "Salvataggio..." : "Salva impostazioni email"}
+            </button>
+            {savingSettings ? <span className="inline-spinner" aria-hidden="true" /> : null}
+          </div>
         </form>
       </section>
 

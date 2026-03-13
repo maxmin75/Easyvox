@@ -8,6 +8,22 @@ Stack:
 - `pgvector` per embeddings/similarity
 - Row Level Security (RLS) con tenant context per request
 
+## Ollama locale via Cloudflare Tunnel
+
+Se vuoi far usare a `https://easyvox.app` un modello Ollama in esecuzione sul tuo Mac:
+
+1. Avvia Ollama in locale su `http://127.0.0.1:11434`.
+2. Apri un tunnel pubblico con `npm run ollama:tunnel`.
+3. Verifica il tunnel con `npm run ollama:health -- https://<tuo-url>.trycloudflare.com`.
+4. Imposta su Vercel oppure in `/admin/system-settings`:
+   - `AI_PROVIDER=ollama`
+   - `OLLAMA_BASE_URL=https://<tuo-url>.trycloudflare.com`
+   - `OLLAMA_CHAT_MODEL=qwen3.5:0.8b`
+   - `OLLAMA_EMBEDDING_MODEL=nomic-embed-text`
+
+Nota: gli URL `trycloudflare.com` sono temporanei. Se vuoi un hostname stabile su un tuo dominio Cloudflare, crea un tunnel nominato e punta quel dominio a `http://127.0.0.1:11434`.
+Per aggiornare automaticamente Vercel ogni volta che cambia il quick tunnel usa `npm run ollama:sync-vercel`.
+
 ## Architettura sicurezza
 
 1. Middleware valida `clientId` su endpoint tenant-scoped:
@@ -397,7 +413,7 @@ Tabelle principali:
 
 `OLLAMA_CHAT_MODEL`
 - Serve per: modello chat Ollama.
-- Fa: definisce modello chat (`qwen2.5:7b` default).
+- Fa: definisce modello chat (`qwen3.5:0.8b` default).
 - Dati da dove arrivano: configurazione Ollama.
 - Da creare?: No, ma consigliato.
 
@@ -524,7 +540,7 @@ ollama serve
 ```
 2. Scarica modelli:
 ```bash
-ollama pull qwen2.5:7b
+ollama pull qwen3.5:0.8b
 ollama pull nomic-embed-text
 ```
 3. Imposta provider:
@@ -575,8 +591,8 @@ Componente React:
 Uso:
 
 ```tsx
-<ChatWidget clientId="<tenant-uuid>" apiBaseUrl="https://your-app.vercel.app" />
-<ChatWidget username="<tenant-slug>" apiBaseUrl="https://your-app.vercel.app" />
+<ChatWidget clientId="<tenant-uuid>" apiBaseUrl="https://easyvox.app" />
+<ChatWidget username="<tenant-slug>" apiBaseUrl="https://easyvox.app" />
 ```
 
 UI widget:
@@ -597,7 +613,7 @@ Env vars richieste:
 - `DATABASE_URL_ADMIN` (opzionale, per operazioni elevate)
 - `AI_PROVIDER` (`ollama` o `openai`)
 - `OLLAMA_BASE_URL` (se provider `ollama`)
-- `OLLAMA_CHAT_MODEL` (opzionale, default `qwen2.5:7b`)
+- `OLLAMA_CHAT_MODEL` (opzionale, default `qwen3.5:0.8b`)
 - `OLLAMA_EMBEDDING_MODEL` (opzionale, default `nomic-embed-text`)
 - `OPENAI_API_KEY` (se provider `openai`; opzionale se da `/admin`)
 - `OPENAI_CHAT_MODEL` (opzionale, da `/admin` o default)

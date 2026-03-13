@@ -17,12 +17,27 @@ enum PlanTier {
   PLUS
 }
 
+enum MemoryKind {
+  SHORT_TERM
+  LONG_TERM
+  PROFILE
+}
+
+enum CrmEventType {
+  CHAT_MESSAGE
+  PROFILE_UPDATED
+  MEMORY_CAPTURED
+  SUMMARY_UPDATED
+  LEAD_CAPTURED
+}
+
 model Client {
   id                  String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   ownerId             String?     @map("owner_id") @db.Uuid
   name                String
   slug                String      @unique
   assistantName       String?     @map("assistant_name")
+  isSuspended         Boolean     @default(false) @map("is_suspended")
   canTakeAppointments Boolean     @default(true) @map("can_take_appointments")
   requireProfiling    Boolean     @default(false) @map("require_profiling")
   requireUserAuthForChat Boolean  @default(false) @map("require_user_auth_for_chat")
@@ -35,10 +50,17 @@ model Client {
   documents           Document[]
   chunks              Chunk[]
   conversations Conversation[]
+  chatCustomers    ChatCustomer[]
+  customerProfiles CustomerProfile[]
+  memoryEntries    MemoryEntry[]
+  conversationSummaries ConversationSummary[]
+  crmEvents        CrmEvent[]
   leads             Lead[]
   appointments      Appointment[]
+  quotes            Quote[]
   feedback          Feedback[]
   fileAssets        FileAsset[]
+  products          Product[]
 
   @@index([ownerId])
   @@map("clients")
@@ -170,6 +192,7 @@ model Document {
 
   client Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
   chunks Chunk[]
+  productKnowledge Product?
 
   @@index([clientId])
   @@map("documents")
@@ -195,16 +218,132 @@ model Chunk {
 model Conversation {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   clientId         String   @map("client_id") @db.Uuid
+  customerId       String?  @map("customer_id") @db.Uuid
   sessionId        String   @map("session_id")
   userMessage      String   @map("user_message")
   assistantMessage String   @map("assistant_message")
   createdAt        DateTime @default(now()) @map("created_at")
+  memoryEntries    MemoryEntry[]
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  customer ChatCustomer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   @@index([clientId])
   @@index([clientId, sessionId])
+  @@index([clientId, customerId])
   @@map("conversations")
+}
+
+model ChatCustomer {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId       String   @map("client_id") @db.Uuid
+  name           String
+  normalizedName String   @map("normalized_name")
+  email          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  lastSessionId  String?  @map("last_session_id")
+  profile        CustomerProfile?
+  memoryEntries  MemoryEntry[]
+  summaries      ConversationSummary[]
+  crmEvents      CrmEvent[]
+
+  client        Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  @@unique([clientId, normalizedName])
+  @@index([clientId])
+  @@index([clientId, email])
+  @@map("chat_customers")
+}
+
+model CustomerProfile {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId          String   @map("client_id") @db.Uuid
+  customerId        String   @unique @map("customer_id") @db.Uuid
+  preferredLanguage String?  @map("preferred_language")
+  timezone          String?
+  company           String?
+  jobTitle          String?  @map("job_title")
+  stage             String?
+  goals             Json?
+  painPoints        Json?    @map("pain_points")
+  traits            Json?
+  communicationStyle String? @map("communication_style")
+  profileSummary    String?  @map("profile_summary")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  client   Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  customer ChatCustomer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@map("customer_profiles")
+}
+
+model MemoryEntry {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId        String      @map("client_id") @db.Uuid
+  customerId      String      @map("customer_id") @db.Uuid
+  conversationId  String?     @map("conversation_id") @db.Uuid
+  kind            MemoryKind
+  content         String
+  summary         String?
+  importanceScore Float       @default(0.5) @map("importance_score")
+  source          String?
+  metadata        Json?
+  lastUsedAt      DateTime?   @map("last_used_at")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  customer     ChatCustomer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, customerId, kind])
+  @@index([clientId, lastUsedAt])
+  @@index([conversationId])
+  @@map("memory_entries")
+}
+
+model ConversationSummary {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId          String   @map("client_id") @db.Uuid
+  customerId        String?  @map("customer_id") @db.Uuid
+  sessionId         String   @map("session_id")
+  summary           String
+  keyFacts          Json?    @map("key_facts")
+  openLoops         Json?    @map("open_loops")
+  sourceMessageCount Int     @default(0) @map("source_message_count")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  client   Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  customer ChatCustomer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@unique([clientId, sessionId])
+  @@index([clientId, customerId])
+  @@map("conversation_summaries")
+}
+
+model CrmEvent {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId    String       @map("client_id") @db.Uuid
+  customerId  String?      @map("customer_id") @db.Uuid
+  sessionId   String?      @map("session_id")
+  type        CrmEventType
+  title       String
+  description String?
+  payload     Json?
+  occurredAt  DateTime     @default(now()) @map("occurred_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  client   Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  customer ChatCustomer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, occurredAt])
+  @@index([clientId, customerId, type])
+  @@map("crm_events")
 }
 
 model Lead {
@@ -212,9 +351,14 @@ model Lead {
   clientId  String   @map("client_id") @db.Uuid
   sessionId String?  @map("session_id")
   name      String
+  firstName String?  @map("first_name")
+  lastName  String?  @map("last_name")
   email     String?
   phone     String?
   website   String?
+  productInterest String? @map("product_interest")
+  interestType    String? @map("interest_type")
+  city            String?
   message   String?
   purchaseIntentDetectedAt DateTime? @map("purchase_intent_detected_at")
   purchaseEmailSentAt      DateTime? @map("purchase_email_sent_at")
@@ -262,6 +406,34 @@ model Appointment {
   @@map("appointments")
 }
 
+model Quote {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId        String   @map("client_id") @db.Uuid
+  sessionId       String?  @map("session_id")
+  customerName    String   @map("customer_name")
+  company         String
+  city            String
+  email           String
+  phone           String
+  support         String
+  aiType          String   @map("ai_type")
+  training        String
+  customizations  String?
+  setupInitial    Int      @map("setup_initial")
+  monthlyCost     Int      @map("monthly_cost")
+  trainingCost    Int      @map("training_cost")
+  emailSentToCustomer Boolean @default(false) @map("email_sent_to_customer")
+  emailSentToInternal Boolean @default(false) @map("email_sent_to_internal")
+  emailError      String?  @map("email_error")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([clientId, sessionId])
+  @@map("quotes")
+}
+
 model AppSetting {
   id                  Int      @id @default(1)
   singleton           String   @unique @default("default")
@@ -299,8 +471,48 @@ model FileAsset {
   createdAt  DateTime @default(now()) @map("created_at")
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  productImages ProductImage[]
 
   @@index([clientId])
   @@index([clientId, sessionId])
   @@map("file_assets")
+}
+
+model Product {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId           String   @map("client_id") @db.Uuid
+  slug               String
+  title              String
+  description        String
+  price              Decimal  @db.Decimal(10, 2)
+  discountPercent    Int      @default(0) @map("discount_percent")
+  productUrl         String   @map("product_url")
+  structuredOutput   Json     @map("structured_output")
+  knowledgeDocumentId String? @unique @map("knowledge_document_id") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  client            Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  knowledgeDocument Document?    @relation(fields: [knowledgeDocumentId], references: [id], onDelete: SetNull)
+  images            ProductImage[]
+
+  @@unique([clientId, slug])
+  @@index([clientId, createdAt])
+  @@map("products")
+}
+
+model ProductImage {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productId  String   @map("product_id") @db.Uuid
+  fileAssetId String  @map("file_asset_id") @db.Uuid
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  fileAsset FileAsset @relation(fields: [fileAssetId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, fileAssetId])
+  @@index([productId, sortOrder])
+  @@index([fileAssetId])
+  @@map("product_images")
 }
