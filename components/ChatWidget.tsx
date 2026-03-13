@@ -180,12 +180,13 @@ function ProductCardMessage({ productCard }: { productCard: NonNullable<Message[
             alignItems: "center",
             justifyContent: "center",
             borderRadius: 999,
-            padding: "8px 12px",
+            padding: "5px 9px",
             background: "#eceff3",
             color: "#111827",
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: 600,
             border: "1px solid rgba(17, 24, 39, 0.08)",
+            lineHeight: 1.1,
           }}
         >
           {productCard.priceLabel}
@@ -197,12 +198,13 @@ function ProductCardMessage({ productCard }: { productCard: NonNullable<Message[
               alignItems: "center",
               justifyContent: "center",
               borderRadius: 999,
-              padding: "8px 12px",
+              padding: "5px 9px",
               background: "#eceff3",
               color: "#111827",
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: 600,
               border: "1px solid rgba(17, 24, 39, 0.08)",
+              lineHeight: 1.1,
             }}
           >
             Sconto {productCard.discountLabel}
@@ -218,13 +220,14 @@ function ProductCardMessage({ productCard }: { productCard: NonNullable<Message[
           alignItems: "center",
           justifyContent: "center",
           borderRadius: 999,
-          padding: "8px 12px",
+          padding: "5px 9px",
           background: "#eceff3",
           color: "#111827",
           textDecoration: "none",
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: 600,
           border: "1px solid rgba(17, 24, 39, 0.08)",
+          lineHeight: 1.1,
         }}
       >
         Apri prodotto
